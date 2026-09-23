@@ -1,0 +1,12 @@
+.aggregation-page {
+  &-placeholder {
+    color: var(--gray);
+  }
+}
+
+.aggregation-nav {
+  // 骨架阶段为空容器，不占位
+  &:empty {
+    display: none;
+  }
+}
