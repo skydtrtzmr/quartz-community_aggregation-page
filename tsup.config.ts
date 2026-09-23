@@ -1,4 +1,52 @@
 import { defineConfig } from "tsup"
+import type { Plugin } from "esbuild"
+import path from "path"
+
+/**
+ * 两类自定义 loader（与 graph-pro / 社区插件同款）：
+ * - `.scss` → 编译成字符串内联
+ * - `.inline.ts` → 用 esbuild 打包成 **浏览器可执行脚本**（含其 import 的依赖），再作为字符串内联
+ */
+const inlineScriptPlugin: Plugin = {
+  name: "inline-script-loader",
+  setup(parentBuild) {
+    const absWorkingDir = parentBuild.initialOptions.absWorkingDir ?? process.cwd()
+
+    parentBuild.onLoad({ filter: /\.scss$/ }, async (args) => {
+      const sass = await import("sass")
+      const result = sass.compile(args.path)
+      return { contents: result.css, loader: "text" }
+    })
+
+    parentBuild.onLoad({ filter: /\.inline\.ts$/ }, async (args) => {
+      const esbuild = await import("esbuild")
+      const fs = await import("fs")
+      let text = await fs.promises.readFile(args.path, "utf8")
+      text = text.replace(/^export default /gm, "")
+      text = text.replace(/^export /gm, "")
+
+      const resolveDir = path.dirname(args.path)
+      const sourcefile = path.relative(absWorkingDir, args.path)
+
+      const result = await esbuild.build({
+        stdin: { contents: text, loader: "ts", resolveDir, sourcefile },
+        write: false,
+        bundle: true,
+        minify: true,
+        platform: "browser",
+        format: "esm",
+        target: "es2020",
+        sourcemap: false,
+        external: ["http://*", "https://*"],
+      })
+
+      const js = result.outputFiles?.[0]?.text
+      if (!js) throw new Error(`inline-script-loader: no JS output for ${args.path}`)
+
+      return { contents: js, loader: "text" }
+    })
+  },
+}
 
 const SINGLETON_EXTERNALS = [
   "preact",
@@ -33,17 +81,5 @@ export default defineConfig({
     options.jsx = "automatic"
     options.jsxImportSource = "preact"
   },
-  esbuildPlugins: [
-    {
-      // scss 编译成字符串内联进 dist（与社区插件一致）
-      name: "text-loader",
-      setup(build) {
-        build.onLoad({ filter: /\.scss$/ }, async (args) => {
-          const sass = await import("sass")
-          const result = sass.compile(args.path)
-          return { contents: result.css, loader: "text" }
-        })
-      },
-    },
-  ],
+  esbuildPlugins: [inlineScriptPlugin],
 })

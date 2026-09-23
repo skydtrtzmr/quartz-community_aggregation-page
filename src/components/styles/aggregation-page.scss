@@ -4,8 +4,179 @@
   }
 }
 
+/* ---------- 维度索引页：作用目录 + 取值卡片 ---------- */
+
+.aggregation-index {
+  &-count {
+    color: var(--gray);
+    font-size: 0.9rem;
+    margin: 0 0 0.5rem 0;
+  }
+
+  &-scopes {
+    color: var(--gray);
+    font-size: 0.85rem;
+    margin: 0 0 1rem 0;
+
+    &-label {
+      margin-right: 0.25rem;
+    }
+  }
+
+  &-scope {
+    &:not(:last-child)::after {
+      content: " · ";
+    }
+  }
+
+  &-empty {
+    color: var(--gray);
+  }
+}
+
+.aggregation-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  &-item a {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    padding: 0.25rem 0.65rem;
+    border: 1px solid var(--lightgray);
+    border-radius: 999px;
+    background-color: var(--light);
+    text-decoration: none;
+    line-height: 1.6;
+
+    &:hover {
+      border-color: var(--secondary);
+      background-color: var(--highlight);
+    }
+  }
+
+  &-name {
+    color: var(--dark);
+  }
+
+  &-count {
+    color: var(--gray);
+    font-size: 0.8rem;
+  }
+}
+
+/* ---------- 维度值页：计数 + scope 切换条 + 画布 + 实体列表 ---------- */
+
+.aggregation-value {
+  &-count {
+    color: var(--gray);
+    font-size: 0.9rem;
+    margin: 0 0 0.75rem 0;
+  }
+}
+
+.aggregation-scope-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 1rem 0;
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.7rem;
+    border: 1px solid var(--lightgray);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--darkgray);
+    cursor: pointer;
+    font-size: 0.85rem;
+    line-height: 1.6;
+
+    &:hover {
+      border-color: var(--secondary);
+      color: var(--dark);
+    }
+
+    &.is-active {
+      background: var(--secondary);
+      border-color: var(--secondary);
+      color: var(--light);
+    }
+  }
+}
+
+.aggregation-scope-count {
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+.aggregation-graph {
+  min-height: 320px;
+  margin-bottom: 1.5rem;
+  border: 1px dashed var(--lightgray);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &-placeholder {
+    color: var(--gray);
+    font-size: 0.9rem;
+    margin: 0;
+  }
+}
+
+.aggregation-entities {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  &-placeholder {
+    color: var(--gray);
+    font-size: 0.9rem;
+  }
+
+  &-group-title {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    font-size: 0.95rem;
+    margin: 1.1rem 0 0.35rem 0;
+    padding-bottom: 0.2rem;
+    border-bottom: 1px solid var(--lightgray);
+    color: var(--darkgray);
+
+    &:first-child {
+      margin-top: 0;
+    }
+  }
+
+  &-group-count {
+    font-size: 0.8rem;
+    color: var(--gray);
+    font-weight: normal;
+  }
+
+  &-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+
+    > li {
+      padding: 0.22rem 0;
+    }
+  }
+}
+
+/* ---------- 文件夹页维度入口（后续步骤填充） ---------- */
+
 .aggregation-nav {
-  // 骨架阶段为空容器，不占位
   &:empty {
     display: none;
   }
