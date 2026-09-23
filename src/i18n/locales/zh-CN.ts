@@ -20,6 +20,11 @@ export default {
         all: "全部",
         root: "顶级目录",
       },
+      /** 文件夹页的维度入口 */
+      nav: {
+        title: "本目录维度",
+        more: "还有 {count} 个",
+      },
       unavailable: "该页缺少维度信息（可能由旧构建残留）。",
     },
   },

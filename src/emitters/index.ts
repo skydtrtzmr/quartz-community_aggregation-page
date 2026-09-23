@@ -28,6 +28,18 @@ export interface AggregationPageEmitterOptions {
 /** 产物目录（独立命名空间，不与 graph-pro 的 graph/local/** 混写） */
 export const DIMENSION_GRAPH_DIR = "graph/dimensions"
 
+/** 字段/取值 → 页面 slug 的映射清单（供 graph-pro 双击聚合节点时拼出精确 URL） */
+export const DIMENSION_MANIFEST_PATH = `${DIMENSION_GRAPH_DIR}/index`
+
+export interface DimensionManifest {
+  version: 1
+  fields: Array<{
+    field: string
+    fieldSlug: string
+    values: Array<{ value: string; valueSlug: string }>
+  }>
+}
+
 /**
  * 维度子图 emitter（Phase 2）。
  *
@@ -91,8 +103,28 @@ export const AggregationPageEmitter: QuartzEmitterPlugin<AggregationPageEmitterO
       }
     }
 
+    // slug 清单：运行期（graph-pro 双击聚合节点）用它拼出精确的维度值页 URL。
+    // 为什么要它：取值 slug 会做冲突消解（如 `A B` 与 `A-B`），运行期无法靠 slugify 复现。
+    const manifest: DimensionManifest = {
+      version: 1,
+      fields: plan.fields.map((field) => ({
+        field: field.field,
+        fieldSlug: field.fieldSlug,
+        values: field.values.map((value) => ({
+          value: value.value,
+          valueSlug: value.valueSlug,
+        })),
+      })),
+    }
+    yield write({
+      ctx,
+      slug: DIMENSION_MANIFEST_PATH as FullSlug,
+      ext: ".json",
+      content: JSON.stringify(manifest),
+    })
+
     console.log(
-      `[AggregationPage] 维度子图 ${written} 份（${plan.fields.length} 个维度）-> ${DIMENSION_GRAPH_DIR}/`,
+      `[AggregationPage] 维度子图 ${written} 份（${plan.fields.length} 个维度）+ slug 清单 -> ${DIMENSION_GRAPH_DIR}/`,
     )
   }
 

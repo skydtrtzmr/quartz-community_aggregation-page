@@ -174,10 +174,49 @@
   }
 }
 
-/* ---------- 文件夹页维度入口（后续步骤填充） ---------- */
+/* ---------- 文件夹页维度入口 ---------- */
 
 .aggregation-nav {
+  margin: 0 0 1.5rem 0;
+
   &:empty {
     display: none;
+  }
+
+  &-title {
+    font-size: 1rem;
+    margin: 0 0 0.4rem 0;
+    color: var(--darkgray);
+  }
+
+  &-group {
+    margin-bottom: 0.8rem;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  &-field {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    font-size: 0.9rem;
+    margin: 0 0 0.3rem 0;
+
+    a {
+      color: var(--darkgray);
+    }
+  }
+
+  &-field-count {
+    color: var(--gray);
+    font-size: 0.8rem;
+    font-weight: normal;
+  }
+
+  &-more a {
+    color: var(--gray);
+    font-size: 0.85rem;
   }
 }

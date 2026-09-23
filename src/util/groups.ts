@@ -97,7 +97,7 @@ function compareStrings(a: string, b: string): number {
 }
 
 /** 与 graph-pro 的 sharedAggregation.keyFor 同款：数组取第一个「有值」的元素 */
-function firstValue(raw: unknown): string | null {
+export function firstValue(raw: unknown): string | null {
   const present = (v: unknown) => v !== undefined && v !== null && v !== ""
   const value = Array.isArray(raw) ? raw.find(present) : present(raw) ? raw : undefined
   return value === undefined ? null : String(value)

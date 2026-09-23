@@ -47,7 +47,12 @@ function warn(message: string) {
 
 /** 目录上下文：去掉末段文件名，再按 depth 截断；根目录返回 "/"（与 aggregation-pro 同款） */
 export function folderContextOf(slug: string, depth: number): string {
-  const parts = slug.split("/").slice(0, -1).slice(0, Math.max(1, depth))
+  return contextOfFolder(slug.split("/").slice(0, -1).join("/"), depth)
+}
+
+/** 目录（而非文件）所属的聚合上下文：按 depth 截断；根目录返回 "/" */
+export function contextOfFolder(folder: string, depth: number): string {
+  const parts = folder.split("/").filter((part) => part.length > 0).slice(0, Math.max(1, depth))
   return parts.join("/") || "/"
 }
 

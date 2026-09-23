@@ -16,6 +16,11 @@ export default {
         listLoading: "Loading entries…",
       },
       /** Directory scope */
+      /** Folder-page dimension entry */
+      nav: {
+        title: "Dimensions in this folder",
+        more: "{count} more",
+      },
       scope: {
         all: "All",
         root: "Top level",

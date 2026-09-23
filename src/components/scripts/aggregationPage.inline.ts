@@ -223,6 +223,8 @@ function initValueSection(section: HTMLElement, cleanups: Array<() => void>): vo
       else next.searchParams.set("scope", scope)
       // 只改地址栏，不触发路由与刷新（纯前端过滤）
       window.history.replaceState(null, "", next.toString())
+      // 通知图谱按新参数重绘（graph-pro 监听该事件：两个插件之间的事件契约）
+      document.dispatchEvent(new CustomEvent("aggregation-scope-changed"))
       rerender()
     }
     button.addEventListener("click", handler)
