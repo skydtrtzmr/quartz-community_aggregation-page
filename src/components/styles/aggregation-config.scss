@@ -1,0 +1,155 @@
+// 「本目录聚合配置」按钮与面板样式。
+//
+// 按钮排在右上角图标排的第 4 位：阅读模式 right:1rem / 全局图谱 3.25rem / 夜间模式 5.5rem / 本按钮 7.75rem
+// （全部 top: 0.75rem、32×32、position: fixed；外壳用 display: contents 避免影响 header 的 flex 布局）
+
+.aggregation-config {
+  display: contents;
+}
+
+.aggregation-config-toggle {
+  cursor: pointer;
+  padding: 0;
+  position: fixed;
+  top: 0.75rem;
+  right: 7.75rem;
+  z-index: 200;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  width: 32px;
+  height: 32px;
+  color: var(--dark);
+  opacity: 0.5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    opacity 0.2s ease,
+    background-color 0.2s ease;
+
+  svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  &:hover,
+  &[aria-expanded="true"] {
+    opacity: 1;
+    background-color: var(--lightgray);
+  }
+}
+
+.aggregation-config-panel {
+  position: fixed;
+  top: 3rem;
+  right: 1rem;
+  z-index: 300;
+  min-width: 16rem;
+  max-width: 20rem;
+  padding: 0.75rem;
+  border: 1px solid var(--lightgray);
+  border-radius: 8px;
+  background-color: var(--light);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+.aggregation-config-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.aggregation-config-title {
+  font-size: 0.9rem;
+  color: var(--darkgray);
+}
+
+.aggregation-config-reset {
+  cursor: pointer;
+  border: 1px solid var(--lightgray);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--gray);
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem;
+
+  &:hover {
+    color: var(--dark);
+    border-color: var(--secondary);
+  }
+}
+
+.aggregation-config-hint,
+.aggregation-config-note {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--gray);
+}
+
+.aggregation-config-note {
+  margin: 0.5rem 0 0 0;
+}
+
+.aggregation-config-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.aggregation-config-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: grab;
+
+  &:hover {
+    background-color: var(--lightgray);
+  }
+
+  &.is-dragging {
+    opacity: 0.5;
+  }
+
+  &.is-applied {
+    color: var(--secondary);
+    border-color: var(--lightgray);
+
+    .aggregation-config-state {
+      color: var(--secondary);
+    }
+  }
+
+  &.is-dimmed {
+    color: var(--gray);
+    opacity: 0.65;
+  }
+}
+
+.aggregation-config-handle {
+  color: var(--gray);
+  font-size: 0.7rem;
+  letter-spacing: -2px;
+}
+
+.aggregation-config-name {
+  flex: 1;
+}
+
+.aggregation-config-state {
+  font-size: 0.7rem;
+  color: var(--gray);
+}

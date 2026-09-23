@@ -77,6 +77,11 @@
         "displayName": "Aggregation Nav",
         "defaultPosition": "beforeBody",
         "defaultPriority": 20
+      },
+      "AggregationConfigToggle": {
+        "displayName": "Folder Aggregation Config",
+        "defaultPosition": "header",
+        "defaultPriority": 40
       }
     }
   }

@@ -21,6 +21,16 @@ export default {
         title: "Dimensions in this folder",
         more: "{count} more",
       },
+      /** Per-folder aggregation config panel (top-right button) */
+      config: {
+        button: "Folder aggregation config",
+        title: "Aggregation levels for this folder",
+        hint: "Up to the first {count} level(s) apply — drag to reorder",
+        reset: "Reset",
+        applied: "applied",
+        dimmed: "off",
+        note: "Applies to this folder only; dimensions come from the aggregation rule chain.",
+      },
       scope: {
         all: "All",
         root: "Top level",
