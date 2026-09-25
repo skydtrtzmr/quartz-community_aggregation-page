@@ -76,11 +76,12 @@ function normalizeSlug(raw: string): string {
   return (raw || "").replace(/\/index$/, "").replace(/\/+$/, "")
 }
 
-function readParams(): { scope: string; context: string } {
+function readParams(): { scope: string; context: string; filter: DimensionFilterEntry[] } {
   const params = new URLSearchParams(window.location.search)
   return {
     scope: normalizeScope(params.get("scope") || ""),
     context: normalizeSlug(params.get("context") || ""),
+    filter: parseFilter(params.get("filter") || ""),
   }
 }
 
@@ -101,6 +102,47 @@ function connectedTo(graph: DimensionGraph, context: string, slug: string): bool
     const to = normalizeSlug(edge.target)
     return (source === context && to === target) || (to === context && source === target)
   })
+}
+
+interface DimensionFilterEntry {
+  field: string
+  value: string
+}
+
+/** 解析 `filter` 参数：`字段:值` 逗号分隔（与 graph-pro 的 dimensionGraphFilter 口径一致） */
+function parseFilter(raw: string): DimensionFilterEntry[] {
+  const s = (raw || "").trim()
+  if (s === "") return []
+  const entries: DimensionFilterEntry[] = []
+  for (const part of s.split(",")) {
+    const idx = part.indexOf(":")
+    if (idx <= 0) continue
+    const field = part.slice(0, idx).trim()
+    const value = part.slice(idx + 1).trim()
+    if (field.length === 0 || value.length === 0) continue
+    entries.push({ field, value })
+  }
+  return entries
+}
+
+/** 取 frontmatter 字段的第一个值（数组取首个，与 aggregation-pro 口径一致） */
+function firstValue(value: unknown): string | null {
+  if (value == null) return null
+  if (Array.isArray(value)) return value.length > 0 ? String(value[0]) : null
+  if (typeof value === "string") return value
+  if (typeof value === "number" || typeof value === "boolean") return String(value)
+  return null
+}
+
+/** 命中实体是否满足所有 filter（祖先维度约束） */
+function matchesFilter(graph: DimensionGraph, slug: string, entries: DimensionFilterEntry[]): boolean {
+  if (entries.length === 0) return true
+  const details = graph.nodes[slug]
+  const fm = details?.frontmatter
+  for (const entry of entries) {
+    if (firstValue(fm?.[entry.field]) !== entry.value) return false
+  }
+  return true
 }
 
 function formatCount(template: string, count: number): string {
@@ -129,7 +171,10 @@ function renderList(section: HTMLElement, graph: DimensionGraph, params): void {
   const currentSlug = (document.body && document.body.dataset && document.body.dataset.slug) || graph.center
 
   const visible = graph.matched.filter(
-    (match) => inScope(match.slug, params.scope) && connectedTo(graph, params.context, match.slug),
+    (match) =>
+      inScope(match.slug, params.scope) &&
+      connectedTo(graph, params.context, match.slug) &&
+      matchesFilter(graph, match.slug, params.filter),
   )
   if (countEl) countEl.textContent = formatCount(section.dataset.countTemplate, visible.length)
 
@@ -217,10 +262,12 @@ function initValueSection(section: HTMLElement, cleanups: Array<() => void>): vo
   section.querySelectorAll("[data-dimension-scope-tabs] button").forEach((button) => {
     const handler = () => {
       const scope = button.dataset.scope || ""
-      params = { scope, context: params.context }
+      params = { scope, context: params.context, filter: [] }
       const next = new URL(window.location.toString())
       if (scope === "") next.searchParams.delete("scope")
       else next.searchParams.set("scope", scope)
+      // 切 scope 后祖先约束（filter）语义不成立，清除之（换目录后原祖先维度不再适用）
+      next.searchParams.delete("filter")
       // 只改地址栏，不触发路由与刷新（纯前端过滤）
       window.history.replaceState(null, "", next.toString())
       // 通知图谱按新参数重绘（graph-pro 监听该事件：两个插件之间的事件契约）
@@ -230,6 +277,26 @@ function initValueSection(section: HTMLElement, cleanups: Array<() => void>): vo
     button.addEventListener("click", handler)
     cleanups.push(() => button.removeEventListener("click", handler))
   })
+
+  // 「清除上下文」按钮：URL 带 ?context=（从图谱双击进入）时显示，点击移除 context 回到 scope 内全量
+  const clearContextBtn = section.querySelector("[data-dimension-clear-context]")
+  if (clearContextBtn) {
+    const syncClearContext = () => {
+      clearContextBtn.hidden = params.context === ""
+    }
+    const clearHandler = () => {
+      params = { scope: params.scope, context: "", filter: params.filter }
+      const next = new URL(window.location.toString())
+      next.searchParams.delete("context")
+      window.history.replaceState(null, "", next.toString())
+      document.dispatchEvent(new CustomEvent("aggregation-scope-changed"))
+      syncClearContext()
+      rerender()
+    }
+    clearContextBtn.addEventListener("click", clearHandler)
+    cleanups.push(() => clearContextBtn.removeEventListener("click", clearHandler))
+    syncClearContext()
+  }
 
   syncTabs(section, params.scope)
 

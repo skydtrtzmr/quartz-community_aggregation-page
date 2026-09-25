@@ -14,6 +14,8 @@ export default {
         empty: "No entries in this category.",
         graphPending: "The relation graph lands in a later step.",
         listLoading: "Loading entries…",
+        expand: "Expand graph",
+        clearContext: "Clear context",
       },
       /** Directory scope */
       /** Folder-page dimension entry */
@@ -26,6 +28,7 @@ export default {
         button: "Folder aggregation config",
         title: "Aggregation levels for this folder",
         hint: "Up to the first {count} level(s) apply — drag to reorder",
+        folder: "Folder: {folder}",
         reset: "Reset",
         applied: "applied",
         dimmed: "off",

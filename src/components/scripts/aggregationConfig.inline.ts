@@ -128,17 +128,21 @@ function initSection(section: HTMLElement, cleanups: Array<() => void>): void {
   const panel = section.querySelector("[data-aggregation-config-panel]")
   const list = section.querySelector("[data-aggregation-config-list]")
   const hint = section.querySelector("[data-aggregation-config-hint]")
+  const folderEl = section.querySelector("[data-aggregation-config-folder]")
   const reset = section.querySelector("[data-aggregation-config-reset]")
   if (!toggle || !panel || !list || !hint || !reset) return
 
-  const folder = section.dataset.folder || ""
-  if (folder === "") return
+  // 维度值页（`_dimensions/...`）：folder 由 `?scope=` 决定并跟随 scope 切换；目录页/内容页：folder 构建期写死在 data-folder
+  const isDimensionPage = section.dataset.dimensionPage === "true"
 
   const maxFields = parseInt(list.dataset.maxFields || String(DEFAULT_MAX_FIELDS), 10)
   const appliedLabel = list.dataset.appliedLabel || ""
   const dimmedLabel = list.dataset.dimmedLabel || ""
   const hintTemplate = hint.dataset.hintTemplate || hint.textContent || ""
+  const folderTemplate = (folderEl && folderEl.dataset.folderTemplate) || ""
 
+  let aggregation: { root?: { depth?: number }; resolved?: Record<string, unknown> } | null = null
+  let folder = ""
   let chain: string[] = []
   let maxLevels = readMaxLevels()
   let order: string[] = []
@@ -152,10 +156,15 @@ function initSection(section: HTMLElement, cleanups: Array<() => void>): void {
     order = [...effective, ...rest]
   }
 
+  const updateFolderLabel = () => {
+    if (folderEl) folderEl.textContent = folderTemplate.replace(/\{folder\}/g, folder || "/")
+  }
+
   const render = () => {
     list.textContent = ""
     const applied = order.slice(0, maxLevels)
     hint.textContent = hintTemplate.replace(/\{count\}/g, String(maxLevels))
+    updateFolderLabel()
 
     for (const field of order.slice(0, maxFields)) {
       const isApplied = applied.includes(field)
@@ -193,6 +202,45 @@ function initSection(section: HTMLElement, cleanups: Array<() => void>): void {
     dispatchOrderChanged()
   }
 
+  /**
+   * 重新解析 folder（维度页从 `?scope=` 取，跟随 scope 切换）→ 规则链 → 展示顺序，并据可见性显隐。
+   * 无 scope 或链为空时隐藏整个分组（维度页进入时、以及切换 scope 后都会走这里）。
+   */
+  const refresh = () => {
+    if (isDimensionPage) {
+      const raw = new URLSearchParams(window.location.search).get("scope") ?? ""
+      let parsed = raw
+      try {
+        parsed = decodeURIComponent(raw)
+      } catch {
+        // 保留原始值
+      }
+      folder = parsed.replace(/^\/+/, "").replace(/\/+$/, "")
+    } else {
+      folder = section.dataset.folder || ""
+    }
+
+    if (folder === "") {
+      section.hidden = true
+      return
+    }
+    const depth = (aggregation && aggregation.root && aggregation.root.depth) || 1
+    chain = fieldChainOf(aggregation?.resolved?.[contextOfFolder(folder, depth)])
+    if (chain.length === 0) {
+      section.hidden = true
+      return
+    }
+
+    section.hidden = false
+    maxLevels = readMaxLevels()
+    buildOrder()
+    render()
+  }
+
+  const clearDropIndicators = () => {
+    list.querySelectorAll(".drop-before, .drop-after").forEach((el) => el.classList.remove("drop-before", "drop-after"))
+  }
+
   const onDragStart = (event: DragEvent) => {
     const target = (event.target as HTMLElement | null)?.closest(".aggregation-config-item") as HTMLElement | null
     if (!target) return
@@ -208,10 +256,22 @@ function initSection(section: HTMLElement, cleanups: Array<() => void>): void {
     const target = (event.target as HTMLElement | null)?.closest(".aggregation-config-item") as HTMLElement | null
     target?.classList.remove("is-dragging")
     dragField = null
+    clearDropIndicators()
   }
 
   const onDragOver = (event: DragEvent) => {
-    if (dragField) event.preventDefault()
+    if (!dragField) return
+    event.preventDefault()
+    const target = (event.target as HTMLElement | null)?.closest(".aggregation-config-item") as HTMLElement | null
+    if (!target) {
+      clearDropIndicators()
+      return
+    }
+    // 落点指示：鼠标在目标项中线上方 → 插到其前（.drop-before），下方 → 插到其后（.drop-after）
+    const rect = target.getBoundingClientRect()
+    const before = event.clientY < rect.top + rect.height / 2
+    clearDropIndicators()
+    target.classList.add(before ? "drop-before" : "drop-after")
   }
 
   const onDrop = (event: DragEvent) => {
@@ -221,11 +281,18 @@ function initSection(section: HTMLElement, cleanups: Array<() => void>): void {
     const moved = dragField
     dragField = null
     const to = target.dataset.field
+    const after = target.classList.contains("drop-after")
+    clearDropIndicators()
     if (!to || moved === to) return
 
     const next = order.filter((field) => field !== moved)
     const insertAt = next.indexOf(to)
-    next.splice(insertAt === -1 ? next.length : insertAt, 0, moved)
+    if (insertAt === -1) {
+      next.push(moved)
+    } else {
+      next.splice(after ? insertAt + 1 : insertAt, 0, moved)
+    }
+    if (next.join("|") === order.join("|")) return
     order = next
     persist()
     render()
@@ -286,23 +353,24 @@ function initSection(section: HTMLElement, cleanups: Array<() => void>): void {
 
   void (async () => {
     try {
-      const aggregation = await loadAggregation()
-      if (!aggregation || !aggregation.resolved) return
-      const depth = (aggregation.root && aggregation.root.depth) || 1
-      chain = fieldChainOf(aggregation.resolved[contextOfFolder(folder, depth)])
-      if (chain.length === 0) {
-        // 构建期已按同一份配置判定过可见性；这里兜底隐藏（例如产物与配置不同步）
+      aggregation = await loadAggregation()
+      if (!aggregation || !aggregation.resolved) {
         section.hidden = true
         return
       }
-      maxLevels = readMaxLevels()
-      buildOrder()
-      render()
+      refresh()
     } catch (error) {
       console.error("[AggregationConfig] 初始化失败", error)
       section.dataset.initError = String(error)
     }
   })()
+
+  // 维度值页：scope 切换后重新解析 folder 并刷新面板（folder 跟随 scope）
+  if (isDimensionPage) {
+    const onScopeChanged = () => refresh()
+    document.addEventListener("aggregation-scope-changed", onScopeChanged)
+    cleanups.push(() => document.removeEventListener("aggregation-scope-changed", onScopeChanged))
+  }
 }
 
 function initAggregationConfig(): void {

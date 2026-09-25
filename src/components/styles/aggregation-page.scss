@@ -116,9 +116,69 @@
   opacity: 0.75;
 }
 
+.aggregation-clear-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0 0 0.75rem 0;
+  padding: 0.2rem 0.7rem;
+  border: 1px solid var(--lightgray);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--darkgray);
+  cursor: pointer;
+  font-size: 0.8rem;
+
+  &:hover {
+    border-color: var(--secondary);
+    color: var(--dark);
+  }
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+.aggregation-graph-wrap {
+  position: relative;
+  margin-bottom: 1.5rem;
+
+  .aggregation-graph {
+    margin-bottom: 0;
+  }
+
+  .dimension-expand {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    z-index: 10;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--light);
+    border: 1px solid var(--lightgray);
+    border-radius: 4px;
+    color: var(--dark);
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+}
+
 .aggregation-graph {
   min-height: 320px;
-  margin-bottom: 1.5rem;
   border: 1px dashed var(--lightgray);
   border-radius: 8px;
   display: flex;

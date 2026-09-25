@@ -14,6 +14,8 @@ export default {
         empty: "该分类下暂无实体。",
         graphPending: "关系图将在后续步骤接入。",
         listLoading: "正在加载实体列表…",
+        expand: "放大图谱",
+        clearContext: "清除上下文",
       },
       /** 目录范围（scope） */
       scope: {
@@ -30,6 +32,7 @@ export default {
         button: "本目录聚合配置",
         title: "本目录聚合层级",
         hint: "最多应用前 {count} 级：拖动调整顺序，前 {count} 项生效",
+        folder: "当前目录：{folder}",
         reset: "恢复默认",
         applied: "应用中",
         dimmed: "未启用",

@@ -27,8 +27,10 @@ export interface AggregationConfigToggleOptions {
  * - 改完后派发 `document` 上的 `aggregation-order-changed` 事件
  * - 级数上限读取 `explorer3` 容器的 `data-dimensionmaxlevels`（单一来源，避免两处配置漂移）
  *
- * 可见性在**构建期**决定（站点没配 aggregation、或当前目录规则链为空 → 不渲染），
- * 因此不会出现"先出现再消失"的抖动。
+ * 可见性：
+ * - 目录页/内容页在**构建期**决定（站点没配 aggregation、或当前目录规则链为空 → 不渲染）
+ * - 维度值页（`_dimensions/...`）只要站点配了 aggregation 就渲染按钮外壳（folder 留空），
+ *   实际目录由运行期 `?scope=` 解析（见脚本），无 scope 或链为空时脚本隐藏。
  */
 export default ((opts?: AggregationConfigToggleOptions) => {
   const maxFields = opts?.maxFields ?? 20
@@ -42,21 +44,36 @@ export default ((opts?: AggregationConfigToggleOptions) => {
     const text = i18n(locale).pages.aggregationPage.config
     const slug = (fileData.slug ?? "") as string
 
-    // 目录页 slug 形如 `<目录>/index`；内容页取其所在目录；根目录不提供配置
-    const folder = slug.endsWith("/index") ? slug.slice(0, -"/index".length) : slug.includes("/") ? slug.slice(0, slug.lastIndexOf("/")) : ""
-    if (folder === "") return null
+    // 维度值页（`_dimensions/...`）：folder 由运行期 `?scope=` 决定并跟随 scope 切换，构建期留空
+    const isDimensionPage = slug.startsWith("_dimensions/")
+    const folder = isDimensionPage
+      ? ""
+      : slug.endsWith("/index")
+        ? slug.slice(0, -"/index".length)
+        : slug.includes("/")
+          ? slug.slice(0, slug.lastIndexOf("/"))
+          : ""
 
-    // 该目录的候选维度（只能选规则链上的字段：维度页是构建期产物）
+    if (!isDimensionPage && folder === "") return null
+
     const rawConfig = (
-      ctx as { cfg?: { configuration?: { aggregation?: unknown } } } | undefined
+      ctx as { cfg?: { configuration?: { aggregation?: unknown } } | undefined }
     )?.cfg?.configuration?.aggregation
     const aggregation = normalizeAggregation(rawConfig)
     if (!aggregation) return null
-    const chain = fieldChain(resolveChain(aggregation, folderContextOf(`${folder}/x`, aggregation.root.depth)))
-    if (chain.length === 0) return null
+
+    if (!isDimensionPage) {
+      const chain = fieldChain(resolveChain(aggregation, folderContextOf(`${folder}/x`, aggregation.root.depth)))
+      if (chain.length === 0) return null
+    }
 
     return (
-      <div class="aggregation-config" data-aggregation-config data-folder={folder}>
+      <div
+        class="aggregation-config"
+        data-aggregation-config
+        data-folder={folder}
+        data-dimension-page={String(isDimensionPage)}
+      >
         <button
           class="aggregation-config-toggle"
           type="button"
@@ -87,6 +104,11 @@ export default ((opts?: AggregationConfigToggleOptions) => {
               {text.reset}
             </button>
           </div>
+          <p
+            class="aggregation-config-folder"
+            data-aggregation-config-folder
+            data-folder-template={text.folder}
+          ></p>
           <p
             class="aggregation-config-hint"
             data-aggregation-config-hint

@@ -86,6 +86,13 @@
   }
 }
 
+.aggregation-config-folder {
+  margin: 0 0 0.35rem 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--secondary);
+}
+
 .aggregation-config-hint,
 .aggregation-config-note {
   margin: 0 0 0.5rem 0;
@@ -121,7 +128,35 @@
   }
 
   &.is-dragging {
-    opacity: 0.5;
+    opacity: 0.55;
+    transform: scale(1.02);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    border: 1px dashed var(--secondary);
+    cursor: grabbing;
+  }
+
+  &.drop-before,
+  &.drop-after {
+    position: relative;
+  }
+
+  &.drop-before::before,
+  &.drop-after::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    border-radius: 1px;
+    background-color: var(--secondary);
+  }
+
+  &.drop-before::before {
+    top: -2px;
+  }
+
+  &.drop-after::after {
+    bottom: -2px;
   }
 
   &.is-applied {
