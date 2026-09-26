@@ -76,6 +76,14 @@ function normalizeSlug(raw: string): string {
   return (raw || "").replace(/\/index$/, "").replace(/\/+$/, "")
 }
 
+/** 文件夹索引页（目录自身）判定：`项目/`、`项目/index`、根 `index` 等 —— 不是目录内的实体 */
+function isFolderIndexSlug(slug: string): boolean {
+  const s = slug || ""
+  if (s === "" || s === "/" || s === "index") return true
+  if (s.endsWith("/")) return true
+  return s.endsWith("/index")
+}
+
 function readParams(): { scope: string; context: string; filter: DimensionFilterEntry[] } {
   const params = new URLSearchParams(window.location.search)
   return {
@@ -85,8 +93,10 @@ function readParams(): { scope: string; context: string; filter: DimensionFilter
   }
 }
 
-/** scope 语义：前缀匹配（`?scope=项目` 含 `项目/` 下的全部实体）；`/` 表示顶级目录 */
+/** scope 语义：前缀匹配（`?scope=项目` 含 `项目/` 下的全部实体）；`/` 表示顶级目录。
+ *  文件夹索引页代表目录自身，不算目录内的实体（与 graph-pro 的 inScope 口径一致） */
 function inScope(slug: string, scope: string): boolean {
+  if (isFolderIndexSlug(slug)) return false
   if (scope === "") return true
   if (scope === "/") return slug.indexOf("/") === -1
   return slug.indexOf(scope + "/") === 0
@@ -125,13 +135,23 @@ function parseFilter(raw: string): DimensionFilterEntry[] {
   return entries
 }
 
-/** 取 frontmatter 字段的第一个值（数组取首个，与 aggregation-pro 口径一致） */
+/** 把 `[[target]]` / `[[target|display]]` 剥离为纯文本（display 优先，否则 target） */
+function stripWikilink(value: string): string {
+  const match = value.match(/^\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]$/)
+  if (!match) return value
+  const target = match[1] ?? ""
+  const display = match[2] ?? ""
+  return display.trim() || target.trim()
+}
+
+/** 取 frontmatter 字段的第一个值（数组取首个，与 aggregation-pro 口径一致）；wikilink 值剥离为纯文本 */
 function firstValue(value: unknown): string | null {
-  if (value == null) return null
-  if (Array.isArray(value)) return value.length > 0 ? String(value[0]) : null
-  if (typeof value === "string") return value
-  if (typeof value === "number" || typeof value === "boolean") return String(value)
-  return null
+  let result: string | null = null
+  if (value == null) result = null
+  else if (Array.isArray(value)) result = value.length > 0 ? String(value[0]) : null
+  else if (typeof value === "string") result = value
+  else if (typeof value === "number" || typeof value === "boolean") result = String(value)
+  return result === null ? null : stripWikilink(result)
 }
 
 /** 命中实体是否满足所有 filter（祖先维度约束） */
@@ -244,6 +264,40 @@ function renderList(section: HTMLElement, graph: DimensionGraph, params): void {
   }
 }
 
+/**
+ * 更新「当前筛选说明」：`{scope} 中 {field} 为「{value}」的实体（与 {source} 相关）`。
+ * - scope 为空（全部）用 `descNoScope` 模板，否则用 `descWithScope`
+ * - 带 `?context=` 时追加「（与 <来源标题> 相关）」，并显示「清除上下文」按钮
+ */
+function renderContextDesc(section: HTMLElement, graph: DimensionGraph, params): void {
+  const desc = section.querySelector("[data-dimension-context-desc]") as HTMLElement | null
+  const clearBtn = section.querySelector("[data-dimension-clear-context]") as HTMLElement | null
+  const field = section.dataset.field || ""
+  const value = section.dataset.value || ""
+
+  if (desc) {
+    const scope = params.scope
+    const withScope = desc.dataset.descWithScope || ""
+    const noScope = desc.dataset.descNoScope || ""
+    const relatedTpl = desc.dataset.relatedTemplate || ""
+    const scopeName =
+      scope === "" ? "" : scope === "/" ? desc.dataset.scopeRoot || "/" : scopeLabel(section, scope)
+    let text = (scope === "" ? noScope : withScope)
+      .replace(/\{scope\}/g, scopeName)
+      .replace(/\{field\}/g, field)
+      .replace(/\{value\}/g, value)
+    if (params.context !== "") {
+      const details = graph.nodes[params.context]
+      const source = (details && details.title) || params.context
+      text += relatedTpl.replace(/\{source\}/g, source)
+    }
+    desc.textContent = text
+    desc.hidden = false
+  }
+
+  if (clearBtn) clearBtn.hidden = params.context === ""
+}
+
 function initValueSection(section: HTMLElement, cleanups: Array<() => void>): void {
   const list = section.querySelector("[data-dimension-entities]")
   if (!list) return
@@ -256,6 +310,7 @@ function initValueSection(section: HTMLElement, cleanups: Array<() => void>): vo
   const rerender = () => {
     if (!graph) return
     syncTabs(section, params.scope)
+    renderContextDesc(section, graph, params)
     renderList(section, graph, params)
   }
 
@@ -278,24 +333,19 @@ function initValueSection(section: HTMLElement, cleanups: Array<() => void>): vo
     cleanups.push(() => button.removeEventListener("click", handler))
   })
 
-  // 「清除上下文」按钮：URL 带 ?context=（从图谱双击进入）时显示，点击移除 context 回到 scope 内全量
+  // 「清除上下文」按钮：点击移除 context 回到 scope 内全量（显示状态由 renderContextDesc 统一控制）
   const clearContextBtn = section.querySelector("[data-dimension-clear-context]")
   if (clearContextBtn) {
-    const syncClearContext = () => {
-      clearContextBtn.hidden = params.context === ""
-    }
     const clearHandler = () => {
       params = { scope: params.scope, context: "", filter: params.filter }
       const next = new URL(window.location.toString())
       next.searchParams.delete("context")
       window.history.replaceState(null, "", next.toString())
       document.dispatchEvent(new CustomEvent("aggregation-scope-changed"))
-      syncClearContext()
       rerender()
     }
     clearContextBtn.addEventListener("click", clearHandler)
     cleanups.push(() => clearContextBtn.removeEventListener("click", clearHandler))
-    syncClearContext()
   }
 
   syncTabs(section, params.scope)

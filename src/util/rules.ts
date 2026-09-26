@@ -5,10 +5,11 @@
  * 而 `aggregation-pro` 的产物 `static/aggregation.json` 在 Phase 2 才写出（且并行、无顺序保证），
  * 页面生成阶段读不到它。因此本插件从 `configuration.aggregation` 直接解析，
  * **语义必须与 aggregation-pro 的 compiler 一致**（test/rules.test.ts 用同一组用例对拍）：
- * - 目录上下文 = 源文件 slug 去掉文件名后按 `root.depth` 截断；根目录为 `"/"`
+ * - 目录上下文 = 源文件 slug 去掉文件名后按 `folderDepth` 截断；根目录为 `"/"`
  * - 未配置的目录逐层向父目录回退，最终使用 `branches.default`
  * - 显式 `[]` 会**停止**继承（不能回退到父级）
- * - 规则只有 `folder` 与 `field` 两种（date 已并入 field，值即分组键）
+ * - 配置写法：文件夹恒为第一层（只设 `folderDepth`），字段链写纯字段名（`string[]`）；
+ *   解析后内部仍用 `DimensionRule`（folder/field 对象）承载，供本插件内部消费
  *
  * 容错策略（与 aggregation-pro 的“非法即抛错”不同）：这里任何非法配置只告警并返回 null，
  * 让维度页整体不生成，避免页面侧先于聚合侧把构建打断；真正的严格校验仍由 aggregation-pro 负责。
@@ -56,7 +57,7 @@ export function contextOfFolder(folder: string, depth: number): string {
   return parts.join("/") || "/"
 }
 
-/** 与 aggregation-pro 的 keys() 对齐：规则里不接受未声明的键 */
+/** 与 aggregation-pro 的 keys() 对齐：不接受未声明的键 */
 function assertKeys(input: Record<string, unknown>, allowed: string[], path: string): boolean {
   for (const key of Object.keys(input)) {
     if (!allowed.includes(key)) {
@@ -67,43 +68,23 @@ function assertKeys(input: Record<string, unknown>, allowed: string[], path: str
   return true
 }
 
-function parseRule(value: unknown, path: string): DimensionRule | null {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    warn(`${path} 不是对象，已忽略整份聚合配置`)
-    return null
-  }
-  const input = value as Record<string, unknown>
-  if (input.type === "folder") {
-    if (!assertKeys(input, ["type", "depth"], path)) return null
-    const depth = input.depth === undefined ? 1 : input.depth
-    if (typeof depth !== "number" || !Number.isInteger(depth) || depth < 1) {
-      warn(`${path}.depth 必须是 >=1 的整数，已忽略整份聚合配置`)
-      return null
-    }
-    return { type: "folder", depth }
-  }
-  if (input.type === "field") {
-    if (!assertKeys(input, ["type", "field"], path)) return null
-    if (typeof input.field !== "string" || input.field.trim().length === 0) {
-      warn(`${path}.field 必须是非空字符串，已忽略整份聚合配置`)
-      return null
-    }
-    return { type: "field", field: input.field.trim() }
-  }
-  warn(`${path}.type 只能是 folder 或 field（收到 ${JSON.stringify(input.type)}），已忽略整份聚合配置`)
-  return null
-}
-
+/**
+ * 字段链：纯字段名数组（新写法），编译成内部的 `DimensionRule`（field）。
+ * 顺序即分组顺序；`[]` 表示停止继承。
+ */
 function parseChain(value: unknown, path: string): DimensionRule[] | null {
   if (!Array.isArray(value)) {
-    warn(`${path} 必须是数组（[] 表示停止继承），已忽略整份聚合配置`)
+    warn(`${path} 必须是字段名数组（[] 表示停止继承），已忽略整份聚合配置`)
     return null
   }
   const rules: DimensionRule[] = []
   for (let i = 0; i < value.length; i++) {
-    const rule = parseRule(value[i], `${path}[${i}]`)
-    if (!rule) return null
-    rules.push(rule)
+    const item = value[i]
+    if (typeof item !== "string" || item.trim().length === 0) {
+      warn(`${path}[${i}] 必须是非空字段名，已忽略整份聚合配置`)
+      return null
+    }
+    rules.push({ type: "field", field: item.trim() })
   }
   return rules
 }
@@ -137,39 +118,35 @@ export function normalizeAggregation(value: unknown): NormalizedAggregation | nu
     return null
   }
   const input = value as Record<string, unknown>
-  const rootInput = input.root
-  if (
-    rootInput === null ||
-    typeof rootInput !== "object" ||
-    Array.isArray(rootInput) ||
-    (rootInput as Record<string, unknown>).type !== "folder"
-  ) {
-    warn("configuration.aggregation.root 必须是 { type: folder, depth? }，已忽略")
-    return null
-  }
-  const rootDepth = (rootInput as Record<string, unknown>).depth
-  const depth = rootDepth === undefined ? 1 : rootDepth
+  const base = "configuration.aggregation"
+  if (!assertKeys(input, ["minGroupSize", "folderDepth", "branches"], base)) return null
+
+  // 文件夹恒为第一层，配置只暴露层数
+  const rawDepth = input.folderDepth
+  const depth = rawDepth === undefined ? 1 : rawDepth
   if (typeof depth !== "number" || !Number.isInteger(depth) || depth < 1) {
-    warn("configuration.aggregation.root.depth 必须是 >=1 的整数，已忽略")
+    warn(`${base}.folderDepth 必须是 >=1 的整数，已忽略`)
     return null
   }
 
-  const branchesInput =
-    input.branches === undefined || input.branches === null
-      ? {}
-      : (input.branches as Record<string, unknown>)
+  const branchesRaw = input.branches === undefined || input.branches === null ? {} : input.branches
+  if (typeof branchesRaw !== "object" || Array.isArray(branchesRaw)) {
+    warn(`${base}.branches 必须是对象，已忽略`)
+    return null
+  }
+  const branchesInput = branchesRaw as Record<string, unknown>
+  if (!assertKeys(branchesInput, ["default", "folders"], `${base}.branches`)) return null
+
   const defaultChain =
     branchesInput.default === undefined
       ? []
-      : parseChain(branchesInput.default, "configuration.aggregation.branches.default")
+      : parseChain(branchesInput.default, `${base}.branches.default`)
   if (!defaultChain) return null
 
   const foldersInput =
-    branchesInput.folders === undefined || branchesInput.folders === null
-      ? {}
-      : branchesInput.folders
+    branchesInput.folders === undefined || branchesInput.folders === null ? {} : branchesInput.folders
   if (typeof foldersInput !== "object" || Array.isArray(foldersInput)) {
-    warn("configuration.aggregation.branches.folders 必须是对象，已忽略")
+    warn(`${base}.branches.folders 必须是对象，已忽略`)
     return null
   }
 
@@ -178,10 +155,10 @@ export function normalizeAggregation(value: unknown): NormalizedAggregation | nu
     const key = normalizeDirectoryKey(rawKey)
     if (!key) return null
     if (Object.hasOwn(folders, key)) {
-      warn(`configuration.aggregation.branches.folders 规范化后出现重复键：${key}，已忽略`)
+      warn(`${base}.branches.folders 规范化后出现重复键：${key}，已忽略`)
       return null
     }
-    const chain = parseChain(rawChain, `configuration.aggregation.branches.folders[${JSON.stringify(rawKey)}]`)
+    const chain = parseChain(rawChain, `${base}.branches.folders[${JSON.stringify(rawKey)}]`)
     if (!chain) return null
     folders[key] = chain
   }

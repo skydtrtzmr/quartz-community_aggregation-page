@@ -2,7 +2,7 @@
  * 维度页清单的纯函数实现：从「源内容 + 聚合配置」算出要生成哪些页面、以及每个取值命中哪些实体。
  *
  * 口径（与用户确认的方案 B 一致）：
- * - 页面集合 = 规则链上出现过的字段 × 该字段的取值（值里不含「未设置」，不套 minGroupSize）
+ * - 页面集合 = 规则链上出现过的字段 × 该字段的取值（缺值统一归入「未分类」取值，不套 minGroupSize）
  * - 目录只影响「哪些字段成为维度」与「取值域的统计范围」，不产生按目录的页面；
  *   目录范围靠运行期 `?scope=` 裁剪
  * - 保留一个纯防御性的取值数上限（默认 500）防止病态字段炸页面
@@ -64,6 +64,15 @@ export interface PlanOptions {
 
 export const DEFAULT_MAX_VALUES_PER_FIELD = 500
 
+/**
+ * frontmatter 字段缺值（缺失 / 空串 / 空数组）时的取值名。
+ *
+ * ⚠️ 跨插件字符串契约：必须与 graph-pro 的 `UNCLASSIFIED_KEY`、explorer-pro 的同名常量
+ * **逐字符一致** —— 图谱「未分类」聚合节点双击后要能在本插件产出的 manifest 里查到该取值，
+ * 才能拼出正确的维度值页 URL。插件之间不能共享包，故各自定义常量并以单测断言字面量。
+ */
+export const UNCLASSIFIED_VALUE = "未分类"
+
 /** 命中的源实体：slug + 它所属的目录上下文 */
 export interface DimensionMatch {
   slug: string
@@ -96,11 +105,20 @@ function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0
 }
 
-/** 与 graph-pro 的 sharedAggregation.keyFor 同款：数组取第一个「有值」的元素 */
+/** 把 `[[target]]` / `[[target|display]]` 剥离为纯文本（display 优先，否则 target） */
+function stripWikilink(value: string): string {
+  const match = value.match(/^\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]$/)
+  if (!match) return value
+  const target = match[1] ?? ""
+  const display = match[2] ?? ""
+  return display.trim() || target.trim()
+}
+
+/** 与 graph-pro 的 sharedAggregation.keyFor 同款：数组取第一个「有值」的元素；wikilink 值剥离为纯文本 */
 export function firstValue(raw: unknown): string | null {
   const present = (v: unknown) => v !== undefined && v !== null && v !== ""
   const value = Array.isArray(raw) ? raw.find(present) : present(raw) ? raw : undefined
-  return value === undefined ? null : String(value)
+  return value === undefined ? null : stripWikilink(String(value))
 }
 
 interface ContextIndex {
@@ -144,8 +162,8 @@ function forEachFieldValue(
   for (const item of items) {
     const scope = index.contextOf(item.slug)
     for (const field of index.fieldsByContext.get(scope) ?? []) {
-      const value = firstValue(item.frontmatter?.[field])
-      if (value === null) continue
+      // 缺值不是「跳过」而是归入「未分类」取值 —— 这样它才有维度值页、manifest 条目与子图 matched
+      const value = firstValue(item.frontmatter?.[field]) ?? UNCLASSIFIED_VALUE
       visit(field, value, item, scope)
     }
   }

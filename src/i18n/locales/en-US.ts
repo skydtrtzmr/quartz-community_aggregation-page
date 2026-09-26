@@ -16,6 +16,9 @@ export default {
         listLoading: "Loading entries…",
         expand: "Expand graph",
         clearContext: "Clear context",
+        descWithScope: "Entries in {scope} where {field} is \"{value}\"",
+        descNoScope: "Entries where {field} is \"{value}\"",
+        relatedTo: " (related to {source})",
       },
       /** Directory scope */
       /** Folder-page dimension entry */

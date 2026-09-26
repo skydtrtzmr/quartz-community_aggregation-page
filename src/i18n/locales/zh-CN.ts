@@ -16,6 +16,10 @@ export default {
         listLoading: "正在加载实体列表…",
         expand: "放大图谱",
         clearContext: "清除上下文",
+        // 当前筛选说明（运行期按 scope / context 填充）；「从哪跳转来」追加在后
+        descWithScope: "{scope} 中 {field} 为「{value}」的实体",
+        descNoScope: "{field} 为「{value}」的实体",
+        relatedTo: "（与 {source} 相关）",
       },
       /** 目录范围（scope） */
       scope: {

@@ -37,7 +37,7 @@
 .aggregation-values {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.6rem;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -116,22 +116,46 @@
   opacity: 0.75;
 }
 
+.aggregation-context-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem 0;
+}
+
+.aggregation-context-desc {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--gray);
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+// 「清除上下文」是**动作**按钮，刻意区别于 scope 切换条的胶囊标签：
+// 虚线边框 + 方形圆角 + ✕ 前缀 + 次要色（标签是实线胶囊 + 主题色）
 .aggregation-clear-context {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  margin: 0 0 0.75rem 0;
-  padding: 0.2rem 0.7rem;
-  border: 1px solid var(--lightgray);
-  border-radius: 999px;
+  gap: 0.25rem;
+  padding: 0.12rem 0.5rem;
+  border: 1px dashed var(--lightgray);
+  border-radius: 4px;
   background: transparent;
-  color: var(--darkgray);
+  color: var(--gray);
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 0.72rem;
+
+  &::before {
+    content: "✕";
+    font-size: 0.7rem;
+  }
 
   &:hover {
-    border-color: var(--secondary);
     color: var(--dark);
+    border-color: var(--secondary);
   }
 
   &[hidden] {
@@ -237,7 +261,8 @@
 /* ---------- 文件夹页维度入口 ---------- */
 
 .aggregation-nav {
-  margin: 0 0 1.5rem 0;
+  /* 与上方内容（标题 / 元信息）拉开距离，避免贴在一起显得拥挤 */
+  margin: 2rem 0 2.5rem 0;
 
   &:empty {
     display: none;
@@ -245,12 +270,12 @@
 
   &-title {
     font-size: 1rem;
-    margin: 0 0 0.4rem 0;
+    margin: 0 0 0.7rem 0;
     color: var(--darkgray);
   }
 
   &-group {
-    margin-bottom: 0.8rem;
+    margin-bottom: 1.3rem;
 
     &:last-child {
       margin-bottom: 0;
@@ -260,9 +285,9 @@
   &-field {
     display: flex;
     align-items: baseline;
-    gap: 0.4rem;
-    font-size: 0.9rem;
-    margin: 0 0 0.3rem 0;
+    gap: 0.5rem;
+    font-size: 0.92rem;
+    margin: 0 0 0.55rem 0;
 
     a {
       color: var(--darkgray);

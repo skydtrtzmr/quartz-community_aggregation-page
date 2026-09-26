@@ -5,14 +5,11 @@ import { normalizeAggregation, type AggregationItem } from "../src/util/rules"
 /** 与演示域同款：default 用 type/status，任务 只按 status，问答 显式停链 */
 const config = normalizeAggregation({
   minGroupSize: 1,
-  root: { type: "folder", depth: 1 },
+  folderDepth: 1,
   branches: {
-    default: [
-      { type: "field", field: "type" },
-      { type: "field", field: "status" },
-    ],
+    default: ["type", "status"],
     folders: {
-      任务: [{ type: "field", field: "status" }],
+      任务: ["status"],
       问答: [],
     },
   },
@@ -62,19 +59,34 @@ describe("文件夹页维度入口（planFolderNav）", () => {
     expect(planFolderNav(items, config, "示例").fields).toEqual([])
   })
 
+  it("目录索引页（文件夹自身）不算目录内的实体", () => {
+    const withIndex: AggregationItem[] = [item("任务/index", { status: "进行中" }), ...items]
+    expect(itemsInFolder(withIndex, "任务").map((i) => i.slug)).toEqual([
+      "任务/task-01",
+      "任务/task-02",
+      "任务/task-03",
+      "任务/年度任务/task-04",
+    ])
+  })
+
   it("显式空链的目录不出入口", () => {
     expect(planFolderNav(items, config, "问答").fields).toEqual([])
     expect(planFolderNav(items, config, "问答").context).toBe("问答")
   })
 
-  it("取值缺失的字段不进清单；字段计数只算有该字段的实体", () => {
+  it("缺值归入未分类；字段计数为覆盖实体数", () => {
     const plan = planFolderNav(items, config, "人员")
     expect(plan.fields.map((field) => field.field)).toEqual(["type", "status"])
     const typeField = plan.fields[0]!
     const statusField = plan.fields[1]!
     expect(typeField.count).toBe(2)
-    expect(statusField.count).toBe(1)
-    expect(statusField.values).toEqual([{ value: "在职", valueSlug: "在职", count: 1 }])
+    // person-01 有 status、person-02 缺 → 覆盖 2 个实体
+    expect(statusField.count).toBe(2)
+    // 同数（1）按值升序：在(U+5728) < 未(U+672A) → 在职在前
+    expect(statusField.values).toEqual([
+      { value: "在职", valueSlug: "在职", count: 1 },
+      { value: "未分类", valueSlug: "未分类", count: 1 },
+    ])
   })
 
   it("超过展示上限时给出 hiddenValues", () => {

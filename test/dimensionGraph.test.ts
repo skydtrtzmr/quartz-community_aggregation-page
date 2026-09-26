@@ -10,10 +10,10 @@ import { normalizeAggregation } from "../src/util/rules"
 
 const config = normalizeAggregation({
   minGroupSize: 2,
-  root: { type: "folder", depth: 1 },
+  folderDepth: 1,
   branches: {
-    default: [{ type: "field", field: "type" }],
-    folders: { 任务: [{ type: "field", field: "status" }], 问答: [] },
+    default: ["type"],
+    folders: { 任务: ["status"], 问答: [] },
   },
 })!
 

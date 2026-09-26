@@ -2,14 +2,16 @@ import { format, i18n } from "../i18n"
 import type { AggregationViewProps } from "../types"
 
 /**
- * 维度值页正文：分类标题与计数 → 目录 scope 切换条 → 清除上下文 → 关系图画布（正文区）→ 实体列表。
+ * 维度值页正文：分类标题与计数 → 目录 scope 切换条 → 当前筛选说明（含「从哪跳转来」+ 清除上下文）
+ * → 关系图画布（正文区）→ 实体列表。
  *
  * 画布与列表的数据来源是**同一份**维度子图产物（`data.graphUrl` → `graph/dimensions/**`）：
  * - 图谱由 graph-pro 的渲染脚本按该地址取数，并按 `?scope=`/`?context=`/`?filter=` 过滤
  * - 列表由本插件的脚本取产物的 `matched` 渲染，**按目录分组**，随 `?scope=` 一起裁剪
  *
- * scope 切换条在构建期渲染（标签与计数来自虚拟页数据），点击后由脚本只改地址栏 + 前端重渲染。
- * 「清除上下文」按钮初始隐藏，脚本在 URL 带 `?context=` 时显示（点击移除 context、回到 scope 内全量）。
+ * 筛选说明（`data-dimension-context-desc`）由脚本按运行期参数填充，例如
+ * 「人员 中 type 为「测试」的实体（与 项目-00001 相关）」；「清除上下文」按钮只在带
+ * `?context=` 时显示（点击移除 context、回到 scope 内全量）。
  */
 const DimensionValueView = ({ cfg, data }: AggregationViewProps) => {
   const locale = cfg?.locale ?? "en-US"
@@ -23,6 +25,8 @@ const DimensionValueView = ({ cfg, data }: AggregationViewProps) => {
       class="aggregation-value"
       data-dimension-value
       data-count-template={text.value.count}
+      data-field={data?.field ?? ""}
+      data-value={data?.value ?? ""}
     >
       <p class="aggregation-value-count">
         <span data-dimension-count>{format(text.value.count, { count: data?.count ?? 0 })}</span>
@@ -47,14 +51,26 @@ const DimensionValueView = ({ cfg, data }: AggregationViewProps) => {
         </div>
       ) : null}
 
-      <button
-        class="aggregation-clear-context"
-        type="button"
-        data-dimension-clear-context
-        hidden
-      >
-        {text.value.clearContext}
-      </button>
+      <div class="aggregation-context-bar">
+        <p
+          class="aggregation-context-desc"
+          data-dimension-context-desc
+          hidden
+          data-desc-with-scope={text.value.descWithScope}
+          data-desc-no-scope={text.value.descNoScope}
+          data-related-template={text.value.relatedTo}
+          data-scope-root={text.scope.root}
+          data-scope-all={text.scope.all}
+        ></p>
+        <button
+          class="aggregation-clear-context"
+          type="button"
+          data-dimension-clear-context
+          hidden
+        >
+          {text.value.clearContext}
+        </button>
+      </div>
 
       <div class="aggregation-graph-wrap">
         <div

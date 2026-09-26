@@ -18,7 +18,7 @@ import {
   type AggregationItem,
   type NormalizedAggregation,
 } from "./rules"
-import { firstValue } from "./groups"
+import { UNCLASSIFIED_VALUE, firstValue } from "./groups"
 import { assignSlugs, dimensionIndexSlug } from "./slug"
 
 export interface FolderNavValue {
@@ -60,10 +60,21 @@ function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0
 }
 
-/** 只取当前目录子树内的源实体（目录页自身是生成页，无 frontmatter，参与也无害） */
+/** 文件夹索引页（目录自身）判定：`项目/`、`项目/index`、根 `index` 等 —— 不是目录内的实体 */
+function isFolderIndexSlug(slug: string): boolean {
+  const s = slug || ""
+  if (s === "" || s === "/" || s === "index") return true
+  if (s.endsWith("/")) return true
+  return s.endsWith("/index")
+}
+
+/** 只取当前目录子树内的源实体（目录索引页代表文件夹自身，不算目录内的实体） */
 export function itemsInFolder(items: AggregationItem[], folder: string): AggregationItem[] {
   const prefix = folder.length > 0 ? `${folder}/` : ""
-  return items.filter((item) => (prefix === "" ? true : item.slug.startsWith(prefix)))
+  return items.filter(
+    (item) =>
+      !isFolderIndexSlug(item.slug) && (prefix === "" ? true : item.slug.startsWith(prefix)),
+  )
 }
 
 /**
@@ -90,8 +101,7 @@ export function planFolderNav(
   const counts = new Map<string, Map<string, number>>()
   for (const item of scoped) {
     for (const field of chain) {
-      const value = firstValue(item.frontmatter?.[field])
-      if (value === null) continue
+      const value = firstValue(item.frontmatter?.[field]) ?? UNCLASSIFIED_VALUE
       const byValue = counts.get(field) ?? new Map<string, number>()
       byValue.set(value, (byValue.get(value) ?? 0) + 1)
       counts.set(field, byValue)

@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest"
 import type { ProcessedContent } from "@quartz-community/types"
-import { planDimensions, sourceItems } from "../src/util/groups"
+import { UNCLASSIFIED_VALUE, planDimensions, sourceItems } from "../src/util/groups"
 import { normalizeAggregation } from "../src/util/rules"
 
 const config = normalizeAggregation({
   minGroupSize: 2,
-  root: { type: "folder", depth: 1 },
+  folderDepth: 1,
   branches: {
-    default: [{ type: "field", field: "type" }],
-    folders: { 任务: [{ type: "field", field: "status" }], 问答: [] },
+    default: ["type"],
+    folders: { 任务: ["status"], 问答: [] },
   },
 })!
 
@@ -37,14 +37,18 @@ describe("维度页清单", () => {
     expect(values("status", items)).toEqual([["进行中", 1, "进行中"]])
   })
 
-  it("数组取第一个有值元素；缺失不计入；同一取值累计计数", () => {
+  it("数组取第一个有值元素；缺值归入未分类；同一取值累计计数", () => {
     const items = [
       item("项目/a", { type: ["", null, "研发", "运营"] }),
       item("项目/b", { type: "研发" }),
       item("项目/c", {}),
       item("项目/d", { type: [] }),
     ]
-    expect(values("type", items)).toEqual([["研发", 2, "研发"]])
+    // 同数（2）按值升序：未(U+672A) < 研(U+7814) → 未分类在前
+    expect(values("type", items)).toEqual([
+      ["未分类", 2, "未分类"],
+      ["研发", 2, "研发"],
+    ])
   })
 
   it("slug 冲突按原始值排序消解，并保留 index 段给索引页", () => {
@@ -112,13 +116,8 @@ describe("维度页清单", () => {
 
   it("字段 slug 冲突时也能消解（Type 与 type）", () => {
     const bothFields = normalizeAggregation({
-      root: { type: "folder", depth: 1 },
-      branches: {
-        default: [
-          { type: "field", field: "type" },
-          { type: "field", field: "Type" },
-        ],
-      },
+      folderDepth: 1,
+      branches: { default: ["type", "Type"] },
     })!
     const items = [item("项目/a", { type: "研发", Type: "X" })]
     const plan = planDimensions(items, bothFields)
@@ -130,6 +129,10 @@ describe("维度页清单", () => {
       fields: [],
       skipped: [],
     })
+  })
+
+  it("未分类跨插件契约：字面量固定为「未分类」", () => {
+    expect(UNCLASSIFIED_VALUE).toBe("未分类")
   })
 })
 
