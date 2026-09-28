@@ -7,7 +7,7 @@
  * **语义必须与 aggregation-pro 的 compiler 一致**（test/rules.test.ts 用同一组用例对拍）：
  * - 目录上下文 = 源文件 slug 去掉文件名后按 `folderDepth` 截断；根目录为 `"/"`
  * - 未配置的目录逐层向父目录回退，最终使用 `branches.default`
- * - 显式 `[]` 会**停止**继承（不能回退到父级）
+ * - 目录级只有两态：配了字段 / 未配置；空数组等价于未配置（**没有**「显式中断」态）
  * - 配置写法：文件夹恒为第一层（只设 `folderDepth`），字段链写纯字段名（`string[]`）；
  *   解析后内部仍用 `DimensionRule`（folder/field 对象）承载，供本插件内部消费
  *
@@ -70,11 +70,11 @@ function assertKeys(input: Record<string, unknown>, allowed: string[], path: str
 
 /**
  * 字段链：纯字段名数组（新写法），编译成内部的 `DimensionRule`（field）。
- * 顺序即分组顺序；`[]` 表示停止继承。
+ * 顺序即分组顺序；空数组等价于未配置（由调用方丢弃，继续向上继承）。
  */
 function parseChain(value: unknown, path: string): DimensionRule[] | null {
   if (!Array.isArray(value)) {
-    warn(`${path} 必须是字段名数组（[] 表示停止继承），已忽略整份聚合配置`)
+    warn(`${path} 必须是字段名数组，已忽略整份聚合配置`)
     return null
   }
   const rules: DimensionRule[] = []
@@ -151,26 +151,36 @@ export function normalizeAggregation(value: unknown): NormalizedAggregation | nu
   }
 
   const folders: Record<string, DimensionRule[]> = {}
+  // 归一化后的目录键全集：查重用它而不是 folders（空链会被丢弃，不能只看结果表）
+  const seen = new Set<string>()
   for (const [rawKey, rawChain] of Object.entries(foldersInput as Record<string, unknown>)) {
     const key = normalizeDirectoryKey(rawKey)
     if (!key) return null
-    if (Object.hasOwn(folders, key)) {
+    if (seen.has(key)) {
       warn(`${base}.branches.folders 规范化后出现重复键：${key}，已忽略`)
       return null
     }
-    const chain = parseChain(rawChain, `${base}.branches.folders[${JSON.stringify(rawKey)}]`)
+    seen.add(key)
+    const path = `${base}.branches.folders[${JSON.stringify(rawKey)}]`
+    const chain = parseChain(rawChain, path)
     if (!chain) return null
+    // 空数组等价于「未配置该目录」（与 aggregation-pro 口径一致：目录级没有「显式中断」态）
+    if (chain.length === 0) {
+      warn(`${path} 是空数组，等价于未配置该目录，将逐层向上继承`)
+      continue
+    }
     folders[key] = chain
   }
 
   return { root: { depth }, branches: { default: defaultChain, folders } }
 }
 
-/** 逐层向上回退取规则链；显式 [] 命中即返回 []（停止继承） */
+/** 逐层向上回退取规则链，最终用 `branches.default`；目录级没有「显式中断」态（空链 = 未配置） */
 export function resolveChain(config: NormalizedAggregation, context: string): DimensionRule[] {
   let current = context
   while (current) {
-    if (Object.hasOwn(config.branches.folders, current)) return config.branches.folders[current]!
+    const chain = config.branches.folders[current]
+    if (chain && chain.length > 0) return chain
     const slash = current.lastIndexOf("/")
     current = slash > 0 ? current.slice(0, slash) : ""
   }

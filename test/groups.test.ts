@@ -30,10 +30,14 @@ describe("维度页清单", () => {
     ]
     const plan = planDimensions(items, config)
     expect(plan.fields.map((f) => f.field)).toEqual(["status", "type"])
-    expect(plan.fields.find((f) => f.field === "type")!.scopes).toEqual(["项目"])
+    // 问答写的是空链 → 等价于未配置 → 继承 default（type），所以 type 的生效目录多一个「问答」
+    expect(plan.fields.find((f) => f.field === "type")!.scopes).toEqual(["问答", "项目"])
     expect(plan.fields.find((f) => f.field === "status")!.scopes).toEqual(["任务"])
-    // 任务（链上是 status）与问答（显式 []）的值都不计入 type 维度
-    expect(values("type", items)).toEqual([["研发", 2, "研发"]])
+    // 任务（链上是 status）的值不计入 type；问答继承 default，其 type 值计入
+    expect(values("type", items)).toEqual([
+      ["研发", 2, "研发"],
+      ["问答", 1, "问答"],
+    ])
     expect(values("status", items)).toEqual([["进行中", 1, "进行中"]])
   })
 

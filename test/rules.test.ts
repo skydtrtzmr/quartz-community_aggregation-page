@@ -28,10 +28,11 @@ describe("聚合规则解析（与 aggregation-pro 语义一致）", () => {
     expect(resolveChain(config, "/")).toEqual([{ type: "field", field: "status" }])
   })
 
-  it("显式 [] 停止继承，不落到父目录", () => {
+  it("空数组等价于未配置：继续向上继承，产物里不留空链", () => {
     const config = normalizeAggregation(base)!
-    expect(resolveChain(config, "任务/特殊任务")).toEqual([])
-    expect(resolveChain(config, "任务/特殊任务/子目录")).toEqual([])
+    expect(resolveChain(config, "任务/特殊任务")).toEqual([{ type: "field", field: "owner" }])
+    expect(resolveChain(config, "任务/特殊任务/子目录")).toEqual([{ type: "field", field: "owner" }])
+    expect(config.branches.folders).not.toHaveProperty("任务/特殊任务")
   })
 
   it("目录上下文按 folderDepth 截断，根目录为 /", () => {
@@ -55,9 +56,9 @@ describe("聚合规则解析（与 aggregation-pro 语义一致）", () => {
   it("目录键规范化后仍能命中（空格/大小写）", () => {
     const config = normalizeAggregation({
       folderDepth: 1,
-      branches: { folders: { "A B": [] }, default: ["x"] },
+      branches: { folders: { "A B": ["y"] }, default: ["x"] },
     })!
-    expect(resolveChain(config, "a-b")).toEqual([])
+    expect(resolveChain(config, "a-b")).toEqual([{ type: "field", field: "y" }])
   })
 
   it("folderDepth 与字段链缺省：深度 1、default 为空", () => {
@@ -92,6 +93,8 @@ describe("聚合规则解析（与 aggregation-pro 语义一致）", () => {
     expect(normalizeAggregation({ ...base, branches: { default: [123], folders: {} } })).toBeNull()
     // 目录键必须落在内容根下
     expect(normalizeAggregation({ ...base, branches: { folders: { "../任务": [] } } })).toBeNull()
+    // 空链会被丢弃，但查重仍按「归一化后的键全集」判定
+    expect(normalizeAggregation({ ...base, branches: { folders: { "A B": [], "a-b": [] } } })).toBeNull()
     expect(warn).toHaveBeenCalled()
     warn.mockRestore()
   })

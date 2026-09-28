@@ -45,7 +45,7 @@ Quartz v5 本地插件（自研，无社区上游）：把**聚合规则的分�
 只消费 `aggregation-pro` 编译的共享规则（`configuration.aggregation` → `static/aggregation.json`）：
 
 - `root: { type: folder, depth: N }` 决定**目录上下文**的粒度
-- `branches.folders` 未配置时逐层向上回退，最终用 `branches.default`；显式 `[]` 停止继承
+- `branches.folders` 未配置时逐层向上回退，最终用 `branches.default`；空数组等价于未配置（不存在「显式中断」态）
 - 规则只有 `folder` 与 `field` 两种；日期维度由字段值承担（值即分组键）
 
 ## 配置

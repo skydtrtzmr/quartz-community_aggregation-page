@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { planFolderNav, itemsInFolder, DEFAULT_NAV_MAX_VALUES } from "../src/util/nav"
 import { normalizeAggregation, type AggregationItem } from "../src/util/rules"
 
-/** 与演示域同款：default 用 type/status，任务 只按 status，问答 显式停链 */
+/** 与演示域同款：default 用 type/status，任务 只按 status，问答 写空链（等价于未配置 → 继承 default） */
 const config = normalizeAggregation({
   minGroupSize: 1,
   folderDepth: 1,
@@ -69,9 +69,16 @@ describe("文件夹页维度入口（planFolderNav）", () => {
     ])
   })
 
-  it("显式空链的目录不出入口", () => {
-    expect(planFolderNav(items, config, "问答").fields).toEqual([])
-    expect(planFolderNav(items, config, "问答").context).toBe("问答")
+  it("空链目录等价于未配置：继承 default，入口照常给出", () => {
+    const plan = planFolderNav(items, config, "问答")
+    expect(plan.context).toBe("问答")
+    expect(plan.fields.map((field) => field.field)).toEqual(["type", "status"])
+  })
+
+  it("default 为空（整个域不做字段聚合）时任何目录都不出入口", () => {
+    const plain = normalizeAggregation({ folderDepth: 1, branches: { default: [] } })!
+    expect(planFolderNav(items, plain, "任务").fields).toEqual([])
+    expect(planFolderNav(items, plain, "问答").fields).toEqual([])
   })
 
   it("缺值归入未分类；字段计数为覆盖实体数", () => {
