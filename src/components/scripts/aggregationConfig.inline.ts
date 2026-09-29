@@ -15,6 +15,13 @@ const ORDER_PREFIX = "quartz:dimensionOrder:"
 const ORDER_EVENT = "aggregation-order-changed"
 const MAX_LEVELS_FALLBACK = 2
 const DEFAULT_MAX_FIELDS = 20
+const boundControls = new WeakMap<Element, {
+  panel: Element
+  list: Element
+  hint: Element
+  reset: Element
+  cleanup: () => void
+}>()
 
 let aggregationPromise: Promise<{ root?: { depth?: number }; resolved?: Record<string, unknown> } | null> | null = null
 
@@ -119,11 +126,6 @@ function dispatchOrderChanged(): void {
 }
 
 function initSection(section: HTMLElement, cleanups: Array<() => void>): void {
-  // 幂等守卫：脚本会在「立即执行」与 nav/render 事件里各初始化一次，
-  // 重复绑定会让一次点击被两个 handler 各切换一次（看起来像"点不开"）。
-  // 用 DOM 属性做守卫，SPA 导航后是新节点、attr 自然不存在 → 仍会重新初始化。
-  if (section.dataset.aggregationConfigBound === "true") return
-
   const toggle = section.querySelector(".aggregation-config-toggle")
   const panel = section.querySelector("[data-aggregation-config-panel]")
   const list = section.querySelector("[data-aggregation-config-list]")
@@ -131,6 +133,13 @@ function initSection(section: HTMLElement, cleanups: Array<() => void>): void {
   const folderEl = section.querySelector("[data-aggregation-config-folder]")
   const reset = section.querySelector("[data-aggregation-config-reset]")
   if (!toggle || !panel || !list || !hint || !reset) return
+
+  // micromorph 可能保留外层 section，却替换内部按钮/面板。只看 section 的
+  // data-aggregation-config-bound 会误判为仍已绑定，留下可见但不可点击的按钮。
+  const existing = boundControls.get(toggle)
+  if (existing?.panel === panel && existing.list === list &&
+      existing.hint === hint && existing.reset === reset) return
+  existing?.cleanup()
 
   // 维度值页（`_dimensions/...`）：folder 由 `?scope=` 决定并跟随 scope 切换；目录页/内容页：folder 构建期写死在 data-folder
   const isDimensionPage = section.dataset.dimensionPage === "true"
@@ -342,14 +351,21 @@ function initSection(section: HTMLElement, cleanups: Array<() => void>): void {
   list.addEventListener("dragover", onDragOver)
   list.addEventListener("drop", onDrop)
   reset.addEventListener("click", onResetClick)
-  cleanups.push(() => {
+  let released = false
+  const cleanup = () => {
+    if (released) return
+    released = true
+    delete section.dataset.aggregationConfigBound
     toggle.removeEventListener("click", onToggleClick)
     list.removeEventListener("dragstart", onDragStart)
     list.removeEventListener("dragend", onDragEnd)
     list.removeEventListener("dragover", onDragOver)
     list.removeEventListener("drop", onDrop)
     reset.removeEventListener("click", onResetClick)
-  })
+    if (boundControls.get(toggle)?.cleanup === cleanup) boundControls.delete(toggle)
+  }
+  boundControls.set(toggle, { panel, list, hint, reset, cleanup })
+  cleanups.push(cleanup)
 
   void (async () => {
     try {
@@ -373,16 +389,34 @@ function initSection(section: HTMLElement, cleanups: Array<() => void>): void {
   }
 }
 
+const RUNTIME_KEY = "__quartzAggregationConfigRuntime"
+const previousRuntime = (window as any)[RUNTIME_KEY] as { dispose?: () => void } | undefined
+previousRuntime?.dispose?.()
+
+const activeCleanupGroups = new Set<Array<() => void>>()
+
+function cleanupSections(): void {
+  activeCleanupGroups.forEach((cleanups) => cleanups.forEach((cleanup) => cleanup()))
+  activeCleanupGroups.clear()
+}
+
 function initAggregationConfig(): void {
   const sections = document.querySelectorAll("[data-aggregation-config]")
   if (sections.length === 0) return
   const cleanups: Array<() => void> = []
   sections.forEach((section) => initSection(section as HTMLElement, cleanups))
-  if (typeof window.addCleanup === "function") {
-    window.addCleanup(() => cleanups.forEach((cleanup) => cleanup()))
-  }
+  if (cleanups.length > 0) activeCleanupGroups.add(cleanups)
 }
 
-document.addEventListener("nav", () => initAggregationConfig())
-document.addEventListener("render", () => initAggregationConfig())
+const onPageChange = () => initAggregationConfig()
+document.addEventListener("nav", onPageChange)
+document.addEventListener("render", onPageChange)
+if (typeof window.addCleanup === "function") window.addCleanup(cleanupSections);
+(window as any)[RUNTIME_KEY] = {
+  dispose: () => {
+    document.removeEventListener("nav", onPageChange)
+    document.removeEventListener("render", onPageChange)
+    cleanupSections()
+  },
+}
 initAggregationConfig()
