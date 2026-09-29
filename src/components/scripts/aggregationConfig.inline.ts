@@ -20,6 +20,7 @@ const boundControls = new WeakMap<Element, {
   list: Element
   hint: Element
   reset: Element
+  refresh: () => void
   cleanup: () => void
 }>()
 
@@ -138,11 +139,11 @@ function initSection(section: HTMLElement, cleanups: Array<() => void>): void {
   // data-aggregation-config-bound 会误判为仍已绑定，留下可见但不可点击的按钮。
   const existing = boundControls.get(toggle)
   if (existing?.panel === panel && existing.list === list &&
-      existing.hint === hint && existing.reset === reset) return
+      existing.hint === hint && existing.reset === reset) {
+    existing.refresh()
+    return
+  }
   existing?.cleanup()
-
-  // 维度值页（`_dimensions/...`）：folder 由 `?scope=` 决定并跟随 scope 切换；目录页/内容页：folder 构建期写死在 data-folder
-  const isDimensionPage = section.dataset.dimensionPage === "true"
 
   const maxFields = parseInt(list.dataset.maxFields || String(DEFAULT_MAX_FIELDS), 10)
   const appliedLabel = list.dataset.appliedLabel || ""
@@ -216,6 +217,11 @@ function initSection(section: HTMLElement, cleanups: Array<() => void>): void {
    * 无 scope 或链为空时隐藏整个分组（维度页进入时、以及切换 scope 后都会走这里）。
    */
   const refresh = () => {
+    // header 控件可被 SPA/micromorph 复用；每次从当前页面读取目录，不能依赖首屏的 data-folder。
+    const currentSlug = document.body?.dataset.slug || ""
+    const isDimensionPage = currentSlug
+      ? currentSlug.startsWith("_dimensions/")
+      : section.dataset.dimensionPage === "true"
     if (isDimensionPage) {
       const raw = new URLSearchParams(window.location.search).get("scope") ?? ""
       let parsed = raw
@@ -226,7 +232,13 @@ function initSection(section: HTMLElement, cleanups: Array<() => void>): void {
       }
       folder = parsed.replace(/^\/+/, "").replace(/\/+$/, "")
     } else {
-      folder = section.dataset.folder || ""
+      folder = currentSlug
+        ? currentSlug.endsWith("/index")
+          ? currentSlug.slice(0, -"/index".length)
+          : currentSlug.includes("/")
+            ? currentSlug.slice(0, currentSlug.lastIndexOf("/"))
+            : ""
+        : section.dataset.folder || ""
     }
 
     if (folder === "") {
@@ -364,7 +376,7 @@ function initSection(section: HTMLElement, cleanups: Array<() => void>): void {
     reset.removeEventListener("click", onResetClick)
     if (boundControls.get(toggle)?.cleanup === cleanup) boundControls.delete(toggle)
   }
-  boundControls.set(toggle, { panel, list, hint, reset, cleanup })
+  boundControls.set(toggle, { panel, list, hint, reset, refresh, cleanup })
   cleanups.push(cleanup)
 
   void (async () => {
@@ -381,12 +393,10 @@ function initSection(section: HTMLElement, cleanups: Array<() => void>): void {
     }
   })()
 
-  // 维度值页：scope 切换后重新解析 folder 并刷新面板（folder 跟随 scope）
-  if (isDimensionPage) {
-    const onScopeChanged = () => refresh()
-    document.addEventListener("aggregation-scope-changed", onScopeChanged)
-    cleanups.push(() => document.removeEventListener("aggregation-scope-changed", onScopeChanged))
-  }
+  // 控件可能在 SPA 导航后复用到维度页，始终监听 scope 切换。
+  const onScopeChanged = () => refresh()
+  document.addEventListener("aggregation-scope-changed", onScopeChanged)
+  cleanups.push(() => document.removeEventListener("aggregation-scope-changed", onScopeChanged))
 }
 
 const RUNTIME_KEY = "__quartzAggregationConfigRuntime"
