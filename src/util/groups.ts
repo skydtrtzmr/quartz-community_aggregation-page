@@ -121,6 +121,16 @@ export function firstValue(raw: unknown): string | null {
   return value === undefined ? null : stripWikilink(String(value))
 }
 
+/** 祖先维度筛选与分组使用同一缺值口径：缺值归入「未分类」。 */
+export function matchesDimensionFilter(
+  frontmatter: Record<string, unknown> | undefined,
+  filters: Array<{ field: string; value: string }>,
+): boolean {
+  return filters.every(({ field, value }) =>
+    (firstValue(frontmatter?.[field]) ?? UNCLASSIFIED_VALUE) === value,
+  )
+}
+
 interface ContextIndex {
   contextOf: (slug: string) => string
   /** 目录上下文 → 该上下文生效的字段（规则链顺序） */

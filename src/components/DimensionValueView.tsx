@@ -13,7 +13,7 @@ import type { AggregationViewProps } from "../types"
  * 「人员 中 type 为「测试」的实体（与 项目-00001 相关）」；「清除上下文」按钮只在带
  * `?context=` 时显示（点击移除 context、回到 scope 内全量）。
  */
-const DimensionValueView = ({ cfg, data }: AggregationViewProps) => {
+const DimensionValueView = ({ cfg, data, ctx }: AggregationViewProps) => {
   const locale = cfg?.locale ?? "en-US"
   const text = i18n(locale).pages.aggregationPage
   const graphUrl = data?.graphUrl ?? ""
@@ -24,6 +24,7 @@ const DimensionValueView = ({ cfg, data }: AggregationViewProps) => {
     <section
       class="aggregation-value"
       data-dimension-value
+      data-listing-sort={JSON.stringify((ctx as { cfg?: { configuration?: { listingSort?: unknown } } })?.cfg?.configuration?.listingSort ?? {})}
       data-count-template={text.value.count}
       data-field={data?.field ?? ""}
       data-value={data?.value ?? ""}
@@ -103,14 +104,14 @@ const DimensionValueView = ({ cfg, data }: AggregationViewProps) => {
         </button>
       </div>
 
-      <ul
+      <div
         class="aggregation-entities"
         data-dimension-entities
         data-dimension-entities-url={graphUrl}
         data-empty-text={text.value.empty}
       >
-        <li class="aggregation-entities-placeholder">{text.value.listLoading}</li>
-      </ul>
+        <p class="aggregation-entities-placeholder">{text.value.listLoading}</p>
+      </div>
     </section>
   )
 }

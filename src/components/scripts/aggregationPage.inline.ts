@@ -12,6 +12,8 @@
  * 对所有页面生效，因此自身按 `[data-dimension-value]` 容器做门控。
  */
 import { resolveRelative } from "@quartz-community/utils/path"
+import { matchesDimensionFilter } from "../../util/groups"
+import { renderUnifiedListing } from "./unifiedListing"
 
 interface DimensionNodeDetails {
   slug: string
@@ -135,34 +137,9 @@ function parseFilter(raw: string): DimensionFilterEntry[] {
   return entries
 }
 
-/** 把 `[[target]]` / `[[target|display]]` 剥离为纯文本（display 优先，否则 target） */
-function stripWikilink(value: string): string {
-  const match = value.match(/^\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]$/)
-  if (!match) return value
-  const target = match[1] ?? ""
-  const display = match[2] ?? ""
-  return display.trim() || target.trim()
-}
-
-/** 取 frontmatter 字段的第一个值（数组取首个，与 aggregation-pro 口径一致）；wikilink 值剥离为纯文本 */
-function firstValue(value: unknown): string | null {
-  let result: string | null = null
-  if (value == null) result = null
-  else if (Array.isArray(value)) result = value.length > 0 ? String(value[0]) : null
-  else if (typeof value === "string") result = value
-  else if (typeof value === "number" || typeof value === "boolean") result = String(value)
-  return result === null ? null : stripWikilink(result)
-}
-
 /** 命中实体是否满足所有 filter（祖先维度约束） */
 function matchesFilter(graph: DimensionGraph, slug: string, entries: DimensionFilterEntry[]): boolean {
-  if (entries.length === 0) return true
-  const details = graph.nodes[slug]
-  const fm = details?.frontmatter
-  for (const entry of entries) {
-    if (firstValue(fm?.[entry.field]) !== entry.value) return false
-  }
-  return true
+  return matchesDimensionFilter(graph.nodes[slug]?.frontmatter, entries)
 }
 
 function formatCount(template: string, count: number): string {
@@ -177,14 +154,21 @@ function scopeLabel(section: HTMLElement, scope: string): string {
   return scope === "/" ? "/" : scope
 }
 
-function syncTabs(section: HTMLElement, scope: string): void {
+function syncTabs(section: HTMLElement, scope: string, graph?: DimensionGraph): void {
   const buttons = section.querySelectorAll("[data-dimension-scope-tabs] button")
   buttons.forEach((button) => {
     button.classList.toggle("is-active", (button.dataset.scope || "") === scope)
+    const badge = button.querySelector(".aggregation-scope-count")
+    if (graph && badge) {
+      const buttonScope = button.dataset.scope || ""
+      const count = graph.matched.filter((match) => inScope(match.slug, buttonScope)).length
+      badge.textContent = String(count)
+      button.hidden = count === 0
+    }
   })
 }
 
-function renderList(section: HTMLElement, graph: DimensionGraph, params): void {
+async function renderList(section: HTMLElement, graph: DimensionGraph, params): Promise<void> {
   const list = section.querySelector("[data-dimension-entities]")
   if (!list) return
   const countEl = section.querySelector("[data-dimension-count]")
@@ -198,70 +182,28 @@ function renderList(section: HTMLElement, graph: DimensionGraph, params): void {
   )
   if (countEl) countEl.textContent = formatCount(section.dataset.countTemplate, visible.length)
 
-  list.textContent = ""
   if (visible.length === 0) {
-    const empty = document.createElement("li")
+    list.textContent = ""
+    const empty = document.createElement("p")
     empty.className = "aggregation-entities-placeholder"
     empty.textContent = list.dataset.emptyText || ""
     list.appendChild(empty)
     return
   }
 
-  // 按目录分组；组内按标题排序
+  // 先按实际目录拆分，再由每个目录自己的动态分类配置继续分组。
   const groups = new Map()
   for (const match of visible) {
-    const bucket = groups.get(match.scope) || []
-    bucket.push(match)
-    groups.set(match.scope, bucket)
+    const folder = match.slug.includes("/") ? match.slug.slice(0, match.slug.lastIndexOf("/")) : "/"
+    const bucket = groups.get(folder) || []
+    const node = graph.nodes[match.slug]
+    bucket.push({ slug: match.slug, title: node?.title || match.slug, frontmatter: node?.frontmatter })
+    groups.set(folder, bucket)
   }
-  const ordered = [...groups.entries()].sort(
-    (a, b) => b[1].length - a[1].length || (a[0] < b[0] ? -1 : 1),
-  )
-  // 未筛选时按目录分组显示小标题（即使只有一个目录，也让人看出这些实体属于哪个目录）；
-  // 已选中某个 scope 时不再重复标注
-  const showGroupTitles = params.scope === ""
-
-  for (const [scope, matches] of ordered) {
-    const groupEl = document.createElement("li")
-    groupEl.className = "aggregation-entities-group"
-
-    if (showGroupTitles) {
-      const title = document.createElement("h3")
-      title.className = "aggregation-entities-group-title"
-      const label = document.createElement("span")
-      label.className = "aggregation-entities-group-label"
-      label.textContent = scopeLabel(section, scope)
-      const badge = document.createElement("span")
-      badge.className = "aggregation-entities-group-count"
-      badge.textContent = String(matches.length)
-      title.appendChild(label)
-      title.appendChild(badge)
-      groupEl.appendChild(title)
-    }
-
-    const ul = document.createElement("ul")
-    ul.className = "aggregation-entities-list"
-    matches
-      .slice()
-      .sort((a, b) => {
-        const titleA = (graph.nodes[a.slug] && graph.nodes[a.slug].title) || a.slug
-        const titleB = (graph.nodes[b.slug] && graph.nodes[b.slug].title) || b.slug
-        return titleA.localeCompare(titleB)
-      })
-      .forEach((match) => {
-        const details = graph.nodes[match.slug]
-        const targetSlug = (details && details.slug) || match.slug
-        const li = document.createElement("li")
-        const link = document.createElement("a")
-        link.className = "internal"
-        link.setAttribute("href", resolveRelative(currentSlug, targetSlug))
-        link.textContent = (details && details.title) || targetSlug
-        li.appendChild(link)
-        ul.appendChild(li)
-      })
-    groupEl.appendChild(ul)
-    list.appendChild(groupEl)
-  }
+  const ordered = [...groups.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+  const sort = JSON.parse(section.dataset.listingSort || "{}")
+  const baseFilters = [...params.filter, { field: section.dataset.field || "", value: section.dataset.value || "" }].filter((entry) => entry.field)
+  await renderUnifiedListing(list, ordered.map(([folder, items]) => ({ folder, items, label: scopeLabel(section, folder) })), currentSlug, sort, params.scope === "" || ordered.length > 1, baseFilters)
 }
 
 /**
@@ -309,9 +251,9 @@ function initValueSection(section: HTMLElement, cleanups: Array<() => void>): vo
 
   const rerender = () => {
     if (!graph) return
-    syncTabs(section, params.scope)
+    syncTabs(section, params.scope, graph)
     renderContextDesc(section, graph, params)
-    renderList(section, graph, params)
+    void renderList(section, graph, params).catch((error) => console.warn("[AggregationPage] 列表渲染失败", error))
   }
 
   section.querySelectorAll("[data-dimension-scope-tabs] button").forEach((button) => {
@@ -350,11 +292,15 @@ function initValueSection(section: HTMLElement, cleanups: Array<() => void>): vo
 
   syncTabs(section, params.scope)
 
+  const onOrderChanged = () => rerender()
+  document.addEventListener("aggregation-order-changed", onOrderChanged)
+  cleanups.push(() => document.removeEventListener("aggregation-order-changed", onOrderChanged))
+
   loadGraph(url).then((loaded) => {
     graph = loaded
     if (!graph) {
       list.textContent = ""
-      const empty = document.createElement("li")
+      const empty = document.createElement("p")
       empty.className = "aggregation-entities-placeholder"
       empty.textContent = list.dataset.emptyText || ""
       list.appendChild(empty)
@@ -364,7 +310,36 @@ function initValueSection(section: HTMLElement, cleanups: Array<() => void>): vo
   })
 }
 
+const boundFolderLists = new WeakSet<Element>()
+
+function initFolderListings(): void {
+  document.querySelectorAll("[data-unified-folder-list]").forEach((section: HTMLElement) => {
+    const target = section.querySelector("[data-unified-folder-content]") as HTMLElement | null
+    if (!target || boundFolderLists.has(target)) return
+    boundFolderLists.add(target)
+    let items = []
+    let sort = {}
+    try {
+      items = JSON.parse(section.dataset.items || "[]")
+      sort = JSON.parse(section.dataset.listingSort || "{}")
+    } catch (error) {
+      console.warn("[AggregationPage] 文件夹列表数据无效", error)
+      return
+    }
+    const folder = section.dataset.folder || ""
+    const slug = document.body?.dataset.slug || `${folder}/index`
+    const render = () => void renderUnifiedListing(target, [{ folder, items }], slug, sort, false)
+      .catch((error) => console.warn("[AggregationPage] 文件夹列表渲染失败，保留原列表", error))
+    render()
+    document.addEventListener("aggregation-order-changed", render)
+    if (typeof window.addCleanup === "function") {
+      window.addCleanup(() => document.removeEventListener("aggregation-order-changed", render))
+    }
+  })
+}
+
 function initAggregationPages(): void {
+  initFolderListings()
   const sections = document.querySelectorAll("[data-dimension-value]")
   if (sections.length === 0) return
   const cleanups: Array<() => void> = []

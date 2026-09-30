@@ -1,6 +1,16 @@
 import { describe, expect, it, vi } from "vitest"
 import type { ProcessedContent } from "@quartz-community/types"
-import { UNCLASSIFIED_VALUE, planDimensions, sourceItems } from "../src/util/groups"
+import { UNCLASSIFIED_VALUE, matchesDimensionFilter, planDimensions, sourceItems } from "../src/util/groups"
+
+describe("维度页祖先筛选", () => {
+  it("缺失字段按未分类匹配，普通值仍须精确匹配", () => {
+    const filters = [{ field: "阶段", value: "未分类" }]
+    expect(matchesDimensionFilter({ type: "工程师" }, filters)).toBe(true)
+    expect(matchesDimensionFilter({ 阶段: "", type: "工程师" }, filters)).toBe(true)
+    expect(matchesDimensionFilter({ 阶段: "入职" }, filters)).toBe(false)
+    expect(matchesDimensionFilter({ 阶段: [null, "[[阶段|入职]]"] }, [{ field: "阶段", value: "入职" }])).toBe(true)
+  })
+})
 import { normalizeAggregation } from "../src/util/rules"
 
 const config = normalizeAggregation({
