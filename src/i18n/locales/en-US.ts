@@ -17,7 +17,11 @@ export default {
         expand: "Expand graph",
         clearContext: "Clear context",
         descWithScope: "Entries in {scope} where {field} is \"{value}\"",
+        descWithConditions: "Entries in {scope} where {conditions}",
         descNoScope: "Entries where {field} is \"{value}\"",
+        descNoScopeConditions: "Entries where {conditions}",
+        condition: "{field} is \"{value}\"",
+        conditionJoin: " and ",
         relatedTo: " (related to {source})",
       },
       /** Directory scope */

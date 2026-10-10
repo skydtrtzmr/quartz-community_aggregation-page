@@ -2,8 +2,12 @@
 /**
  * 维度值页的运行时脚本：
  * - 从维度子图产物（`graph/dimensions/**`）取 `matched` 渲染「按目录分组的实体列表」
- * - scope 切换条：点击只改地址栏（`?scope=`，history.replaceState 不刷新）+ 前端重渲染
  * - 同时支持 `?context=<slug>`：只保留与来源节点直接相连的实体（与图谱口径一致）
+ *
+ * 2026-10-10：scope 切换条 UI 已隐藏（见 `DimensionValueView.tsx` 的注释块），页面入口
+ * 恒带 `?scope=`（文件夹页下钻 / 图谱双击聚合节点）。`?scope=` 的解析与过滤逻辑保留不变，
+ * 与切换条相关的 `syncTabs` / 按钮点击绑定在无按钮时天然无操作，保留以便日后恢复。
+ * 目录显示名改由 `folderLabel()` 取产物 `folderTitles`（即该目录 `index.md` 的 title）。
  *
  * 为什么列表不在构建期渲染：列表数据必须与图谱同源（同一份产物），且要能响应运行时参数。
  * 文案（空态/计数模板/目录标签）由构建期通过 data-* 下发，避免脚本里硬编码语言。
@@ -31,6 +35,8 @@ interface DimensionGraph {
   center: string
   nodes: Record<string, DimensionNodeDetails>
   edges: Array<{ source: string; target: string }>
+  /** 目录 → 该目录 `index.md` 的 title（构建期 `buildFolderTitles()`；无标题的目录无此键） */
+  folderTitles?: Record<string, string>
   matched: DimensionMatch[]
 }
 
@@ -146,12 +152,22 @@ function formatCount(template: string, count: number): string {
   return (template || "{count}").replace(/\{count\}/g, String(count))
 }
 
-function scopeLabel(section: HTMLElement, scope: string): string {
-  const buttons = section.querySelectorAll("[data-dimension-scope-tabs] button")
-  for (const button of buttons) {
-    if ((button.dataset.scope || "") === scope) return button.dataset.scopeLabel || scope
+/**
+ * 目录显示名：优先取该目录 `index.md` 的 title（产物里的 `folderTitles`，构建期
+ * `buildFolderTitles()` 生成），取不到时回退 —— 根目录用「顶级目录」文案
+ * （`data-scope-root`，避免脚本硬编码语言），其余用目录路径。
+ *
+ * 为什么不从切换条按钮取（原 `scopeLabel` 做法）：切换条 UI 已隐藏（2026-10-10），
+ * 按钮不复存在；且改成目录 title 后，分组标题也一起统一。
+ */
+function folderLabel(graph: DimensionGraph, section: HTMLElement, folder: string): string {
+  const title = (graph.folderTitles || {})[folder]
+  if (typeof title === "string" && title.trim() !== "") return title.trim()
+  if (folder === "/") {
+    const desc = section.querySelector("[data-dimension-context-desc]") as HTMLElement | null
+    return desc?.dataset.scopeRoot || "/"
   }
-  return scope === "/" ? "/" : scope
+  return folder
 }
 
 function syncTabs(section: HTMLElement, scope: string, graph?: DimensionGraph): void {
@@ -203,11 +219,11 @@ async function renderList(section: HTMLElement, graph: DimensionGraph, params): 
   const ordered = [...groups.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
   const sort = JSON.parse(section.dataset.listingSort || "{}")
   const baseFilters = [...params.filter, { field: section.dataset.field || "", value: section.dataset.value || "" }].filter((entry) => entry.field)
-  await renderUnifiedListing(list, ordered.map(([folder, items]) => ({ folder, items, label: scopeLabel(section, folder) })), currentSlug, sort, params.scope === "" || ordered.length > 1, baseFilters)
+  await renderUnifiedListing(list, ordered.map(([folder, items]) => ({ folder, items, label: folderLabel(graph, section, folder) })), currentSlug, sort, params.scope === "" || ordered.length > 1, baseFilters)
 }
 
 /**
- * 更新「当前筛选说明」：`{scope} 中 {field} 为「{value}」的实体（与 {source} 相关）`。
+ * 更新「当前筛选说明」：按祖先 filter → 当前值列出全部条件，再追加关联来源。
  * - scope 为空（全部）用 `descNoScope` 模板，否则用 `descWithScope`
  * - 带 `?context=` 时追加「（与 <来源标题> 相关）」，并显示「清除上下文」按钮
  */
@@ -219,15 +235,22 @@ function renderContextDesc(section: HTMLElement, graph: DimensionGraph, params):
 
   if (desc) {
     const scope = params.scope
-    const withScope = desc.dataset.descWithScope || ""
-    const noScope = desc.dataset.descNoScope || ""
+    const withScope = desc.dataset.descWithConditions || desc.dataset.descWithScope || ""
+    const noScope = desc.dataset.descNoScopeConditions || desc.dataset.descNoScope || ""
     const relatedTpl = desc.dataset.relatedTemplate || ""
-    const scopeName =
-      scope === "" ? "" : scope === "/" ? desc.dataset.scopeRoot || "/" : scopeLabel(section, scope)
-    let text = (scope === "" ? noScope : withScope)
-      .replace(/\{scope\}/g, scopeName)
-      .replace(/\{field\}/g, field)
-      .replace(/\{value\}/g, value)
+    const scopeName = scope === "" ? "" : folderLabel(graph, section, scope)
+    const conditions = [...params.filter, { field, value }]
+      .filter((entry, index, entries) => entry.field && entries.findIndex(
+        (other) => other.field === entry.field && other.value === entry.value,
+      ) === index)
+      .map((entry) => (desc.dataset.conditionTemplate || "{field}: {value}")
+        .replace(/\{field\}|\{value\}/g, (token) => token === "{field}" ? entry.field : entry.value))
+      .join(desc.dataset.conditionJoin || " AND ")
+    const template = scope === "" ? noScope : withScope
+    const replacements = { scope: scopeName, conditions, field, value }
+    let text = template.replace(/\{(scope|conditions|field|value)\}/g, (_, key) => replacements[key])
+    // Cached HTML can still carry the original single-condition template.
+    if (!template.includes("{conditions}") && params.filter.length) text += ` (${conditions})`
     if (params.context !== "") {
       const details = graph.nodes[params.context]
       const source = (details && details.title) || params.context

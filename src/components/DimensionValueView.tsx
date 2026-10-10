@@ -2,8 +2,12 @@ import { format, i18n } from "../i18n"
 import type { AggregationViewProps } from "../types"
 
 /**
- * 维度值页正文：分类标题与计数 → 目录 scope 切换条 → 当前筛选说明（含「从哪跳转来」+ 清除上下文）
+ * 维度值页正文：分类标题与计数 → 当前筛选说明（含「从哪跳转来」+ 清除上下文）
  * → 关系图画布（正文区）→ 实体列表。
+ *
+ * 2026-10-10：原「目录 scope 切换条」按要求隐藏（整块 JSX 注释保留，便于日后恢复）。
+ * `?scope=` 过滤行为不变：入口（文件夹页下钻 / 图谱双击聚合节点）带进来的 scope
+ * 仍对图谱与实体列表生效，「当前筛选」说明里的目录名改由脚本取该目录 index.md 的 title。
  *
  * 画布与列表的数据来源是**同一份**维度子图产物（`data.graphUrl` → `graph/dimensions/**`）：
  * - 图谱由 graph-pro 的渲染脚本按该地址取数，并按 `?scope=`/`?context=`/`?filter=` 过滤
@@ -17,8 +21,12 @@ const DimensionValueView = ({ cfg, data, ctx }: AggregationViewProps) => {
   const locale = cfg?.locale ?? "en-US"
   const text = i18n(locale).pages.aggregationPage
   const graphUrl = data?.graphUrl ?? ""
-  const scopeCounts = data?.scopeCounts ?? []
-  const labelFor = (scope: string) => (scope === "/" ? text.scope.root : scope)
+  // Persisted SPA scripts may predate the multi-condition template. Resolve the
+  // known page fields here so every older script only needs to fill in scope.
+  const pageCondition = { field: data?.field ?? "", value: data?.value ?? "" }
+  // 以下两行仅供 scope 切换条使用，切换条已注释隐藏（2026-10-10）：
+  // const scopeCounts = data?.scopeCounts ?? []
+  // const labelFor = (scope: string) => (scope === "/" ? text.scope.root : scope)
 
   return (
     <section
@@ -33,6 +41,9 @@ const DimensionValueView = ({ cfg, data, ctx }: AggregationViewProps) => {
         <span data-dimension-count>{format(text.value.count, { count: data?.count ?? 0 })}</span>
       </p>
 
+      {/* 2026-10-10：目录 scope 切换条按要求隐藏（原实现整体保留在注释里，便于日后恢复）。
+          隐藏后不再提供「切回全部」的入口，符合预期：正常都是从文件夹页 / 图谱入口
+          带 `?scope=` 进入某个目录的维度值页，`?scope=` 过滤行为不受影响。
       {scopeCounts.length > 1 ? (
         <div class="aggregation-scope-tabs" data-dimension-scope-tabs role="tablist">
           <button type="button" class="is-active" data-scope="" data-scope-label={text.scope.all}>
@@ -51,14 +62,19 @@ const DimensionValueView = ({ cfg, data, ctx }: AggregationViewProps) => {
           ))}
         </div>
       ) : null}
+      */}
 
       <div class="aggregation-context-bar">
         <p
           class="aggregation-context-desc"
           data-dimension-context-desc
           hidden
-          data-desc-with-scope={text.value.descWithScope}
-          data-desc-no-scope={text.value.descNoScope}
+          data-desc-with-scope={format(text.value.descWithScope, pageCondition)}
+          data-desc-no-scope={format(text.value.descNoScope, pageCondition)}
+          data-desc-with-conditions={text.value.descWithConditions}
+          data-desc-no-scope-conditions={text.value.descNoScopeConditions}
+          data-condition-template={text.value.condition}
+          data-condition-join={text.value.conditionJoin}
           data-related-template={text.value.relatedTo}
           data-scope-root={text.scope.root}
           data-scope-all={text.scope.all}
