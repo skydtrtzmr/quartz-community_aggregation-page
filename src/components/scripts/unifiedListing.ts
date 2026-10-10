@@ -29,6 +29,10 @@ async function load(path: string): Promise<any> {
   return sources.get(url)!
 }
 
+export function loadDimensionManifest(): Promise<any> {
+  return load("graph/dimensions/index.json")
+}
+
 function folderContext(folder: string, depth: number): string {
   return folder.split("/").filter(Boolean).slice(0, Math.max(1, depth)).join("/") || "/"
 }

@@ -159,6 +159,7 @@ export default ((opts?: AggregationNavOptions) => {
   }
 
   AggregationNav.css = style
+  ;(AggregationNav as typeof AggregationNav & { afterPageIntroduction?: boolean }).afterPageIntroduction = true
 
   return AggregationNav
 }) satisfies QuartzComponentConstructor<AggregationNavOptions>

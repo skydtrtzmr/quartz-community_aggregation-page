@@ -22,13 +22,11 @@ const AggregationPageBody: QuartzComponent = (props: QuartzComponentProps) => {
   const text = i18n(locale).pages.aggregationPage
   const data = (props.fileData as { aggregationPage?: AggregationPageData["aggregationPage"] })
     .aggregationPage
-  const title = props.fileData.frontmatter?.title ?? props.fileData.slug ?? ""
   const viewProps = { ...props, data } as AggregationViewProps
 
   return (
     <div class="popover-hint">
       <article class="aggregation-page">
-        <h1>{title}</h1>
         {!data ? (
           <p class="aggregation-page-placeholder">{text.unavailable}</p>
         ) : data.kind === "index" ? (

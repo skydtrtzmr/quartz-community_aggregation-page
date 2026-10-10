@@ -17,7 +17,7 @@
  */
 import { resolveRelative } from "@quartz-community/utils/path"
 import { matchesDimensionFilter } from "../../util/groups"
-import { renderUnifiedListing } from "./unifiedListing"
+import { loadDimensionManifest, renderUnifiedListing } from "./unifiedListing"
 
 interface DimensionNodeDetails {
   slug: string
@@ -263,6 +263,59 @@ function renderContextDesc(section: HTMLElement, graph: DimensionGraph, params):
   if (clearBtn) clearBtn.hidden = params.context === ""
 }
 
+async function renderDimensionBreadcrumbs(section: HTMLElement, graph: DimensionGraph, params: ReturnType<typeof readParams>): Promise<void> {
+  const nav = document.querySelector<HTMLElement>(".breadcrumb-container")
+  if (!nav) return
+  // Keep the labels supplied by the existing Breadcrumbs component, including
+  // YAML options, TypeScript overrides, and its own defaults.
+  if (nav.dataset.rootName === undefined) nav.dataset.rootName = nav.querySelector(".breadcrumb-element a")?.textContent ?? ""
+  if (nav.dataset.spacerSymbol === undefined) nav.dataset.spacerSymbol = nav.querySelector(".breadcrumb-element p")?.textContent?.trim() ?? ""
+  const template = nav.querySelector<HTMLElement>(".breadcrumb-element")
+  if (!template) return
+  const crumbs: Array<{ label: string; href?: string }> = [
+    { label: nav.dataset.rootName ?? "", href: `${basePath()}/` },
+  ]
+  if (params.scope && params.scope !== "/") {
+    const segments = params.scope.split("/").filter(Boolean)
+    for (let index = 0; index < segments.length; index++) {
+      const folder = segments.slice(0, index + 1).join("/")
+      crumbs.push({ label: folderLabel(graph, section, folder), href: `${basePath()}/${encodePath(folder)}/` })
+    }
+  }
+  if (params.filter.length) {
+    const manifest = await loadDimensionManifest()
+    for (const [index, condition] of params.filter.entries()) {
+      const field = manifest.fields?.find((entry) => entry.field === condition.field)
+      const value = field?.values?.find((entry) => entry.value === condition.value)
+      const query = new URLSearchParams()
+      if (params.scope) query.set("scope", params.scope)
+      if (params.context) query.set("context", params.context)
+      if (index) query.set("filter", params.filter.slice(0, index).map((entry) => `${entry.field}:${entry.value}`).join(","))
+      crumbs.push({
+        label: `${condition.field}: ${condition.value}`,
+        href: field && value ? `${basePath()}/_dimensions/${encodeURIComponent(field.fieldSlug)}/${encodeURIComponent(value.valueSlug)}?${query}` : undefined,
+      })
+    }
+  }
+  crumbs.push({ label: `${section.dataset.field}: ${section.dataset.value}` })
+  if (!nav.isConnected || !section.isConnected) return
+  nav.replaceChildren(...crumbs.map((crumb, index) => {
+    // Reuse the community component's markup and classes, including the empty
+    // href on the current item. The dimension route only changes crumb data.
+    const element = template.cloneNode(true) as HTMLElement
+    const label = element.querySelector("a")!
+    label.textContent = crumb.label
+    label.setAttribute("href", crumb.href ?? "")
+    label.removeAttribute("aria-current")
+    if (index === crumbs.length - 1) label.setAttribute("aria-current", "page")
+    const separator = element.querySelector("p")
+    if (index < crumbs.length - 1) {
+      if (separator) separator.textContent = ` ${nav.dataset.spacerSymbol ?? ""} `
+    } else separator?.remove()
+    return element
+  }))
+}
+
 function initValueSection(section: HTMLElement, cleanups: Array<() => void>): void {
   const list = section.querySelector("[data-dimension-entities]")
   if (!list) return
@@ -276,6 +329,7 @@ function initValueSection(section: HTMLElement, cleanups: Array<() => void>): vo
     if (!graph) return
     syncTabs(section, params.scope, graph)
     renderContextDesc(section, graph, params)
+    void renderDimensionBreadcrumbs(section, graph, params).catch((error) => console.warn("[AggregationPage] 面包屑渲染失败", error))
     void renderList(section, graph, params).catch((error) => console.warn("[AggregationPage] 列表渲染失败", error))
   }
 
