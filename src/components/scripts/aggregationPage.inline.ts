@@ -17,7 +17,7 @@
  */
 import { resolveRelative } from "@quartz-community/utils/path"
 import { matchesDimensionFilter } from "../../util/groups"
-import { loadDimensionManifest, renderUnifiedListing } from "./unifiedListing"
+import { renderUnifiedListing } from "./unifiedListing"
 
 interface DimensionNodeDetails {
   slug: string
@@ -263,9 +263,15 @@ function renderContextDesc(section: HTMLElement, graph: DimensionGraph, params):
   if (clearBtn) clearBtn.hidden = params.context === ""
 }
 
-async function renderDimensionBreadcrumbs(section: HTMLElement, graph: DimensionGraph, params: ReturnType<typeof readParams>): Promise<void> {
+function renderDimensionBreadcrumbs(section: HTMLElement, params: ReturnType<typeof readParams>): void {
   const nav = document.querySelector<HTMLElement>(".breadcrumb-container")
   if (!nav) return
+  let navigation = { folderTitles: {}, fields: [] }
+  try {
+    navigation = JSON.parse(section.dataset.dimensionBreadcrumbs || "{}")
+  } catch (error) {
+    console.warn("[AggregationPage] 面包屑数据无效", error)
+  }
   // Keep the labels supplied by the existing Breadcrumbs component, including
   // YAML options, TypeScript overrides, and its own defaults.
   if (nav.dataset.rootName === undefined) nav.dataset.rootName = nav.querySelector(".breadcrumb-element a")?.textContent ?? ""
@@ -279,13 +285,12 @@ async function renderDimensionBreadcrumbs(section: HTMLElement, graph: Dimension
     const segments = params.scope.split("/").filter(Boolean)
     for (let index = 0; index < segments.length; index++) {
       const folder = segments.slice(0, index + 1).join("/")
-      crumbs.push({ label: folderLabel(graph, section, folder), href: `${basePath()}/${encodePath(folder)}/` })
+      crumbs.push({ label: folderLabel(navigation, section, folder), href: `${basePath()}/${encodePath(folder)}/` })
     }
   }
   if (params.filter.length) {
-    const manifest = await loadDimensionManifest()
     for (const [index, condition] of params.filter.entries()) {
-      const field = manifest.fields?.find((entry) => entry.field === condition.field)
+      const field = navigation.fields?.find((entry) => entry.field === condition.field)
       const value = field?.values?.find((entry) => entry.value === condition.value)
       const query = new URLSearchParams()
       if (params.scope) query.set("scope", params.scope)
@@ -314,22 +319,24 @@ async function renderDimensionBreadcrumbs(section: HTMLElement, graph: Dimension
     } else separator?.remove()
     return element
   }))
+  nav.dataset.dimensionBreadcrumbReady = ""
 }
 
 function initValueSection(section: HTMLElement, cleanups: Array<() => void>): void {
+  let params = readParams()
+  renderDimensionBreadcrumbs(section, params)
   const list = section.querySelector("[data-dimension-entities]")
   if (!list) return
   const url = list.dataset.dimensionEntitiesUrl || ""
   if (!url) return
 
-  let params = readParams()
   let graph: DimensionGraph | null = null
 
   const rerender = () => {
+    renderDimensionBreadcrumbs(section, params)
     if (!graph) return
     syncTabs(section, params.scope, graph)
     renderContextDesc(section, graph, params)
-    void renderDimensionBreadcrumbs(section, graph, params).catch((error) => console.warn("[AggregationPage] 面包屑渲染失败", error))
     void renderList(section, graph, params).catch((error) => console.warn("[AggregationPage] 列表渲染失败", error))
   }
 

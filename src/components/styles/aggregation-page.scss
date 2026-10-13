@@ -1,3 +1,9 @@
+// The static route ancestry is not the scope/filter ancestry of a value page.
+// Reserve its space until the runtime breadcrumb is ready, including on SPA navigation.
+body[data-slug^="_dimensions/"]:has([data-dimension-value]) .breadcrumb-container:not([data-dimension-breadcrumb-ready]) {
+  visibility: hidden;
+}
+
 .aggregation-page {
   &-placeholder {
     color: var(--gray);

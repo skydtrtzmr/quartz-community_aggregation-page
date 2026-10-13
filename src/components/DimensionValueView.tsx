@@ -1,5 +1,6 @@
 import { format, i18n } from "../i18n"
 import type { AggregationViewProps } from "../types"
+import { dimensionBreadcrumbData } from "../util/breadcrumbData"
 
 /**
  * 维度值页正文：分类标题与计数 → 当前筛选说明（含「从哪跳转来」+ 清除上下文）
@@ -17,7 +18,7 @@ import type { AggregationViewProps } from "../types"
  * 「人员 中 type 为「测试」的实体（与 项目-00001 相关）」；「清除上下文」按钮只在带
  * `?context=` 时显示（点击移除 context、回到 scope 内全量）。
  */
-const DimensionValueView = ({ cfg, data, ctx }: AggregationViewProps) => {
+const DimensionValueView = ({ cfg, data, ctx, allFiles }: AggregationViewProps) => {
   const locale = cfg?.locale ?? "en-US"
   const text = i18n(locale).pages.aggregationPage
   const graphUrl = data?.graphUrl ?? ""
@@ -32,6 +33,7 @@ const DimensionValueView = ({ cfg, data, ctx }: AggregationViewProps) => {
     <section
       class="aggregation-value"
       data-dimension-value
+      data-dimension-breadcrumbs={dimensionBreadcrumbData(allFiles)}
       data-listing-sort={JSON.stringify((ctx as { cfg?: { configuration?: { listingSort?: unknown } } })?.cfg?.configuration?.listingSort ?? {})}
       data-count-template={text.value.count}
       data-field={data?.field ?? ""}
