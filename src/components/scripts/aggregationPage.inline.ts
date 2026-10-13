@@ -407,13 +407,22 @@ function initFolderListings(): void {
       items = JSON.parse(section.dataset.items || "[]")
       sort = JSON.parse(section.dataset.listingSort || "{}")
     } catch (error) {
+      target.hidden = false
       console.warn("[AggregationPage] 文件夹列表数据无效", error)
       return
     }
     const folder = section.dataset.folder || ""
     const slug = document.body?.dataset.slug || `${folder}/index`
-    const render = () => void renderUnifiedListing(target, [{ folder, items }], slug, sort, false)
-      .catch((error) => console.warn("[AggregationPage] 文件夹列表渲染失败，保留原列表", error))
+    let latestRender = 0
+    const render = () => {
+      const renderId = ++latestRender
+      void renderUnifiedListing(target, [{ folder, items }], slug, sort, false)
+        .then(() => { if (renderId === latestRender) target.hidden = false })
+        .catch((error) => {
+          if (renderId === latestRender) target.hidden = false
+          console.warn("[AggregationPage] 文件夹列表渲染失败，保留原列表", error)
+        })
+    }
     render()
     document.addEventListener("aggregation-order-changed", render)
     if (typeof window.addCleanup === "function") {
