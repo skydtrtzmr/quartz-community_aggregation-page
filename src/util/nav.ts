@@ -1,3 +1,4 @@
+import { unclassifiedLast } from "./valueOrder"
 /**
  * 文件夹页「维度分类入口」的纯函数实现：给一个目录路径，算出该目录下可直接跳转的维度值。
  *
@@ -118,7 +119,7 @@ export function planFolderNav(
     const valueSlugs = assignSlugs([...byValue.keys()], "value", ["index"])
     const all: FolderNavValue[] = [...byValue.entries()]
       .map(([value, count]) => ({ value, valueSlug: valueSlugs.get(value)!, count }))
-      .sort((a, b) => b.count - a.count || compareStrings(a.value, b.value))
+      .sort((a, b) => unclassifiedLast(a.value, b.value) || b.count - a.count || compareStrings(a.value, b.value))
     fields.push({
       field,
       fieldSlug,

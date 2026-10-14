@@ -32,6 +32,13 @@ const items: AggregationItem[] = [
 ]
 
 describe("文件夹页维度入口（planFolderNav）", () => {
+  it("未分类数量最多时也放在普通取值之后", () => {
+    const plan = planFolderNav([
+      item("任务/a", { status: "进行中" }),
+      ...[1, 2, 3].map(i => item(`任务/missing-${i}`)),
+    ], config, "任务")
+    expect(plan.fields[0]!.values.map(value => value.value)).toEqual(["进行中", "未分类"])
+  })
   it("只统计当前目录子树，并按规则链顺序给出字段", () => {
     const plan = planFolderNav(items, config, "任务")
     expect(plan.context).toBe("任务")

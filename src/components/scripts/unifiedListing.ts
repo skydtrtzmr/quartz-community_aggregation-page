@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { unclassifiedLast } from "../../util/valueOrder"
 import { resolveRelative } from "@quartz-community/utils/path"
 
 const BATCH = 20
@@ -177,7 +178,7 @@ function renderLevels(items: ListingItem[], fields: string[], folder: string, ma
     if (!buckets.has(value)) buckets.set(value, [])
     buckets.get(value)!.push(item)
   }
-  const ordered = [...buckets.entries()].sort((a, b) => b[1].length - a[1].length || collator.compare(a[0], b[0]))
+  const ordered = [...buckets.entries()].sort((a, b) => unclassifiedLast(a[0], b[0]) || b[1].length - a[1].length || collator.compare(a[0], b[0]))
   const cap = maxValues()
   for (const [value, members] of ordered.slice(cap)) leftover.push(...members)
   ordered.slice(0, cap).forEach(([value, members], index) => {

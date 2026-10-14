@@ -1,3 +1,4 @@
+import { unclassifiedLast } from "./valueOrder"
 /**
  * 维度页清单的纯函数实现：从「源内容 + 聚合配置」算出要生成哪些页面、以及每个取值命中哪些实体。
  *
@@ -236,7 +237,7 @@ export function planDimensions(
           scopeCounts: scopeList,
         }
       })
-      .sort((a, b) => b.count - a.count || compareStrings(a.value, b.value))
+      .sort((a, b) => unclassifiedLast(a.value, b.value) || b.count - a.count || compareStrings(a.value, b.value))
 
     fields.push({
       field,
