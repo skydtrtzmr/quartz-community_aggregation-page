@@ -17,7 +17,7 @@
  */
 import { resolveRelative } from "@quartz-community/utils/path"
 import { matchesDimensionFilter } from "../../util/groups"
-import { renderUnifiedListing } from "./unifiedListing"
+import { renderUnifiedListing, cancelUnifiedListing } from "./unifiedListing"
 
 interface DimensionNodeDetails {
   slug: string
@@ -395,6 +395,16 @@ function initValueSection(section: HTMLElement, cleanups: Array<() => void>): vo
 }
 
 const boundFolderLists = new WeakSet<Element>()
+const folderListingCleanups = new Set<() => void>()
+
+function cleanupFolderListings(): void {
+  folderListingCleanups.forEach((cleanup) => cleanup())
+  folderListingCleanups.clear()
+}
+
+// This script may initialize before SPA installs window.addCleanup on the
+// first load. Own the prenav lifecycle so those first bindings are cleared too.
+document.addEventListener("prenav", cleanupFolderListings)
 
 function initFolderListings(): void {
   document.querySelectorAll("[data-unified-folder-list]").forEach((section: HTMLElement) => {
@@ -407,6 +417,7 @@ function initFolderListings(): void {
       items = JSON.parse(section.dataset.items || "[]")
       sort = JSON.parse(section.dataset.listingSort || "{}")
     } catch (error) {
+      boundFolderLists.delete(target)
       target.hidden = false
       console.warn("[AggregationPage] 文件夹列表数据无效", error)
       return
@@ -414,20 +425,27 @@ function initFolderListings(): void {
     const folder = section.dataset.folder || ""
     const slug = document.body?.dataset.slug || `${folder}/index`
     let latestRender = 0
+    let disposed = false
     const render = () => {
+      if (disposed) return
       const renderId = ++latestRender
       void renderUnifiedListing(target, [{ folder, items }], slug, sort, false)
-        .then(() => { if (renderId === latestRender) target.hidden = false })
+        .then(() => { if (!disposed && renderId === latestRender) target.hidden = false })
         .catch((error) => {
+          if (disposed) return
           if (renderId === latestRender) target.hidden = false
           console.warn("[AggregationPage] 文件夹列表渲染失败，保留原列表", error)
         })
     }
     render()
     document.addEventListener("aggregation-order-changed", render)
-    if (typeof window.addCleanup === "function") {
-      window.addCleanup(() => document.removeEventListener("aggregation-order-changed", render))
-    }
+    folderListingCleanups.add(() => {
+      disposed = true
+      latestRender++
+      cancelUnifiedListing(target)
+      boundFolderLists.delete(target)
+      document.removeEventListener("aggregation-order-changed", render)
+    })
   })
 }
 

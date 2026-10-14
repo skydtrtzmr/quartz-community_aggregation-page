@@ -5,6 +5,13 @@ import { resolveRelative } from "@quartz-community/utils/path"
 const BATCH = 20
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" })
 const sources = new Map<string, Promise<any>>()
+// SPA morphing can reuse a container and replace its data-* attributes. Keep
+// render identity outside the DOM so an old request cannot match a new page.
+const activeRenders = new WeakMap<HTMLElement, symbol>()
+
+export function cancelUnifiedListing(target: HTMLElement): void {
+  activeRenders.delete(target)
+}
 
 export type ListingItem = {
   slug: string
@@ -191,9 +198,10 @@ function renderLevels(items: ListingItem[], fields: string[], folder: string, ma
 }
 
 export async function renderUnifiedListing(target: HTMLElement, groups: Array<{ folder: string; items: ListingItem[]; label?: string }>, currentSlug: string, rawSort: any, showDirectories: boolean, baseFilters: Array<{ field: string; value: string }> = []): Promise<void> {
-  const renderId = String((Number(target.dataset.unifiedRenderId) || 0) + 1)
-  target.dataset.unifiedRenderId = renderId
+  const renderId = Symbol()
+  activeRenders.set(target, renderId)
   const [aggregation, manifest] = await Promise.all([load("static/aggregation.json"), load("graph/dimensions/index.json")])
+  if (activeRenders.get(target) !== renderId || !target.isConnected) return
   const output = document.createElement("div")
   output.className = "unified-list"
   for (const group of groups) {
@@ -223,7 +231,7 @@ export async function renderUnifiedListing(target: HTMLElement, groups: Array<{ 
       output.appendChild(groupNode(group.label || folder || "/", items.length, href, content, false))
     } else output.appendChild(content)
   }
-  if (target.dataset.unifiedRenderId !== renderId) return
+  if (activeRenders.get(target) !== renderId || !target.isConnected) return
   target.replaceChildren(output)
   target.classList.add("unified-list-ready")
 }
