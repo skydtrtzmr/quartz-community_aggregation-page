@@ -32,6 +32,26 @@ const items: AggregationItem[] = [
 ]
 
 describe("文件夹页维度入口（planFolderNav）", () => {
+  it("跨目录同名 slug 冲突时沿用全域维度页地址", () => {
+    const collisionItems = [item("项目/a", { type: "A B" }), item("人员/b", { type: "A-B" })]
+    const left = planFolderNav(collisionItems, config, "项目").fields.find(field => field.field === "type")!
+    const right = planFolderNav(collisionItems, config, "人员").fields.find(field => field.field === "type")!
+    expect(left.values[0]!.valueSlug).toBe("a-b")
+    expect(right.values[0]!.valueSlug).toBe("a-b-2")
+    expect(left.count).toBe(1)
+    expect(right.count).toBe(1)
+  })
+  it("子目录使用不同规则链时不把它的实体错误计入父目录维度", () => {
+    const nestedConfig = normalizeAggregation({
+      folderDepth: 2,
+      branches: { default: ["type"], folders: { "项目/任务": ["status"] } },
+    })!
+    const plan = planFolderNav([
+      item("项目/a", { type: "工程" }),
+      item("项目/任务/b", { type: "工程", status: "进行中" }),
+    ], nestedConfig, "项目")
+    expect(plan.fields[0]!.count).toBe(1)
+  })
   it("未分类数量最多时也放在普通取值之后", () => {
     const plan = planFolderNav([
       item("任务/a", { status: "进行中" }),

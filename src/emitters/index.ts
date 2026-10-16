@@ -19,6 +19,8 @@ import {
   sourceItems,
 } from "../util/groups"
 import { write } from "../util/write"
+import { readFile, unlink } from "node:fs/promises"
+import { join } from "node:path"
 
 export interface AggregationPageEmitterOptions {
   /** 单字段取值数上限（与 pageType 的选项保持一致，默认 500） */
@@ -54,6 +56,38 @@ export const AggregationPageEmitter: QuartzEmitterPlugin<AggregationPageEmitterO
 ) => {
   const maxValuesPerField = opts?.maxValuesPerField ?? DEFAULT_MAX_VALUES_PER_FIELD
 
+  // The manifest owns this plugin's generated pages/JSON. Remove only outputs
+  // present in the old manifest and absent from the new one; never source content.
+  async function* emitManifest(ctx: BuildCtx, next: DimensionManifest): AsyncGenerator<FilePath> {
+    let previous: DimensionManifest | undefined
+    try {
+      previous = JSON.parse(await readFile(join(ctx.argv.output, `${DIMENSION_MANIFEST_PATH}.json`), "utf8"))
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
+    }
+    const outputs = (manifest: DimensionManifest) => {
+      const paths = new Set<string>()
+      const safeSegment = (value: string) => typeof value === "string" && value !== "" && value !== "." && value !== ".." && !/[\\/]/.test(value)
+      for (const field of manifest.fields) {
+        if (!safeSegment(field.fieldSlug)) continue
+        paths.add(`_dimensions/${field.fieldSlug}/index.html`)
+        for (const value of field.values) {
+          if (!safeSegment(value.valueSlug)) continue
+          paths.add(`_dimensions/${field.fieldSlug}/${value.valueSlug}.html`)
+          paths.add(`${DIMENSION_GRAPH_DIR}/${field.fieldSlug}/${value.valueSlug}.json`)
+        }
+      }
+      return paths
+    }
+    const retained = outputs(next)
+    for (const file of previous ? outputs(previous) : []) {
+      if (retained.has(file)) continue
+      try { await unlink(join(ctx.argv.output, file)) }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error }
+    }
+    yield write({ ctx, slug: DIMENSION_MANIFEST_PATH as FullSlug, ext: ".json", content: JSON.stringify(next) })
+  }
+
   async function* generate(
     ctx: BuildCtx,
     content: ProcessedContent[],
@@ -61,6 +95,7 @@ export const AggregationPageEmitter: QuartzEmitterPlugin<AggregationPageEmitterO
     const config = readAggregationConfig(ctx)
     if (!config) {
       console.log("[AggregationPage] 未配置 configuration.aggregation，跳过分维度子图")
+      yield* emitManifest(ctx, { version: 1, fields: [] })
       return
     }
 
@@ -68,6 +103,7 @@ export const AggregationPageEmitter: QuartzEmitterPlugin<AggregationPageEmitterO
     const plan = planDimensions(items, config, { maxValuesPerField })
     if (plan.fields.length === 0) {
       console.log("[AggregationPage] 无可用维度，跳过分维度子图")
+      yield* emitManifest(ctx, { version: 1, fields: [] })
       return
     }
 
@@ -116,12 +152,7 @@ export const AggregationPageEmitter: QuartzEmitterPlugin<AggregationPageEmitterO
         })),
       })),
     }
-    yield write({
-      ctx,
-      slug: DIMENSION_MANIFEST_PATH as FullSlug,
-      ext: ".json",
-      content: JSON.stringify(manifest),
-    })
+    yield* emitManifest(ctx, manifest)
 
     console.log(
       `[AggregationPage] 维度子图 ${written} 份（${plan.fields.length} 个维度）+ slug 清单 -> ${DIMENSION_GRAPH_DIR}/`,

@@ -161,6 +161,11 @@ describe("维度页清单", () => {
 describe("源内容筛选", () => {
   const content = [
     [{}, { data: { slug: "项目/a", frontmatter: { type: "研发" } } }],
+    [{}, { data: { slug: "项目/index", frontmatter: {} } }],
+    [{}, { data: { slug: "项目/", frontmatter: {} } }],
+    [{}, { data: { slug: "项目/child/index", frontmatter: { type: "研发" } } }],
+    [{}, { data: { slug: "index", frontmatter: {} } }],
+    [{}, { data: { slug: "项目/placeholder", virtualNode: true, frontmatter: {} } }],
     [{}, { data: { slug: "_dimensions/type/index", frontmatter: { type: "研发" } } }],
     [{}, { data: { slug: "tags/研发", frontmatter: { type: "研发" } } }],
     [{}, { data: { slug: "缺失页", frontmatter: { virtualNode: true, type: "研发" } } }],

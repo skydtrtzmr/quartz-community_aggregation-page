@@ -17,6 +17,7 @@
  */
 import { resolveRelative } from "@quartz-community/utils/path"
 import { matchesDimensionFilter } from "../../util/groups"
+import { isFolderIndexSlug } from "../../util/entities"
 import { renderUnifiedListing, cancelUnifiedListing } from "./unifiedListing"
 
 interface DimensionNodeDetails {
@@ -85,15 +86,8 @@ function normalizeSlug(raw: string): string {
 }
 
 /** 文件夹索引页（目录自身）判定：`项目/`、`项目/index`、根 `index` 等 —— 不是目录内的实体 */
-function isFolderIndexSlug(slug: string): boolean {
-  const s = slug || ""
-  if (s === "" || s === "/" || s === "index") return true
-  if (s.endsWith("/")) return true
-  return s.endsWith("/index")
-}
-
-function readParams(): { scope: string; context: string; filter: DimensionFilterEntry[] } {
-  const params = new URLSearchParams(window.location.search)
+function readParams(search = window.location.search): { scope: string; context: string; filter: DimensionFilterEntry[] } {
+  const params = new URLSearchParams(search)
   return {
     scope: normalizeScope(params.get("scope") || ""),
     context: normalizeSlug(params.get("context") || ""),
@@ -188,6 +182,7 @@ async function renderList(section: HTMLElement, graph: DimensionGraph, params): 
   const list = section.querySelector("[data-dimension-entities]")
   if (!list) return
   const countEl = section.querySelector("[data-dimension-count]")
+  // Dynamic links live in the host DOM, including when this section is in a preview.
   const currentSlug = (document.body && document.body.dataset && document.body.dataset.slug) || graph.center
 
   const visible = graph.matched.filter(
@@ -408,6 +403,7 @@ document.addEventListener("prenav", cleanupFolderListings)
 
 function initFolderListings(): void {
   document.querySelectorAll("[data-unified-folder-list]").forEach((section: HTMLElement) => {
+    if (section.closest(".popover")) return
     const target = section.querySelector("[data-unified-folder-content]") as HTMLElement | null
     if (!target || boundFolderLists.has(target)) return
     boundFolderLists.add(target)
@@ -454,7 +450,9 @@ function initAggregationPages(): void {
   const sections = document.querySelectorAll("[data-dimension-value]")
   if (sections.length === 0) return
   const cleanups: Array<() => void> = []
-  sections.forEach((section) => initValueSection(section, cleanups))
+  sections.forEach((section) => {
+    if (!section.closest(".popover")) initValueSection(section, cleanups)
+  })
   if (typeof window.addCleanup === "function") {
     window.addCleanup(() => cleanups.forEach((cleanup) => cleanup()))
   }
@@ -462,4 +460,22 @@ function initAggregationPages(): void {
 
 document.addEventListener("nav", () => initAggregationPages())
 document.addEventListener("render", () => initAggregationPages())
+// A preview is not a SPA navigation: filter using its target URL instead of the host page.
+document.addEventListener("popover-created", (event) => {
+  const { container, url } = event.detail
+  const params = readParams(new URL(url).search)
+  container.querySelectorAll("[data-dimension-value]").forEach((section: HTMLElement) => {
+    // A tooltip displays the count/list without starting another graph simulation.
+    section.querySelector(".aggregation-graph-wrap")?.setAttribute("hidden", "")
+    const count = section.querySelector("[data-dimension-count]")
+    if (count) count.textContent = "…"
+    const graphUrl = section.querySelector("[data-dimension-entities]")?.dataset.dimensionEntitiesUrl
+    if (!graphUrl) return
+    loadGraph(graphUrl).then(graph => {
+      if (!graph || !container.isConnected) return
+      renderContextDesc(section, graph, params)
+      return renderList(section, graph, params)
+    }).catch(error => console.warn("[AggregationPage] 预览列表渲染失败", error))
+  })
+})
 initAggregationPages()

@@ -7,6 +7,8 @@ import type {
 import { resolveRelative } from "@quartz-community/utils/path"
 import { format, i18n } from "../i18n"
 import { planFolderNav, type FolderNavPlan } from "../util/nav"
+import { planDimensions, buildValueIndex } from "../util/groups"
+import { isDimensionEntity } from "../util/entities"
 import { normalizeAggregation, type AggregationItem, type NormalizedAggregation } from "../util/rules"
 import { DIMENSIONS_PREFIX, dimensionValueSlug } from "../util/slug"
 import style from "./styles/aggregation-page.scss"
@@ -54,6 +56,10 @@ export default ((opts?: AggregationNavOptions) => {
    * 同一构建进程内 `allFiles` 是同一份数组对象 → 以它为键缓存「目录 → 清单」。
    */
   const navPlanCache = new WeakMap<object, Map<string, FolderNavPlan>>()
+  const dimensionCache = new WeakMap<object, {
+    items: AggregationItem[]
+    dimensions: { plan: ReturnType<typeof planDimensions>; values: ReturnType<typeof buildValueIndex> }
+  }>()
   function resolveNavPlan(
     allFiles: QuartzComponentProps["allFiles"],
     config: NormalizedAggregation,
@@ -67,21 +73,24 @@ export default ((opts?: AggregationNavOptions) => {
     const cached = byFolder.get(folder)
     if (cached) return cached
 
-    const items: AggregationItem[] = []
-    for (const file of allFiles) {
-      const slug = (file as { slug?: string }).slug
-      if (!slug) continue
-      // 虚拟节点占位页不参与统计（与 pageType / emitter 的源内容口径一致）
-      if ((file as { frontmatter?: { virtualNode?: unknown } }).frontmatter?.virtualNode === true) {
-        continue
+    let snapshot = dimensionCache.get(allFiles as object)
+    if (!snapshot) {
+      const items: AggregationItem[] = []
+      for (const file of allFiles) {
+        const slug = (file as { slug?: string }).slug
+        if (!slug) continue
+        // 与维度 pageType / emitter 共用源实体边界，排除目录、系统页和占位页。
+        if (!isDimensionEntity({ ...file, slug })) continue
+        items.push({
+          slug,
+          frontmatter: (file as { frontmatter?: Record<string, unknown> }).frontmatter,
+        })
       }
-      items.push({
-        slug,
-        frontmatter: (file as { frontmatter?: Record<string, unknown> }).frontmatter,
-      })
+      snapshot = { items, dimensions: { plan: planDimensions(items, config), values: buildValueIndex(items, config) } }
+      dimensionCache.set(allFiles as object, snapshot)
     }
 
-    const plan = planFolderNav(items, config, folder, { maxValuesPerField })
+    const plan = planFolderNav(snapshot.items, config, folder, { maxValuesPerField, dimensions: snapshot.dimensions })
     byFolder.set(folder, plan)
     return plan
   }

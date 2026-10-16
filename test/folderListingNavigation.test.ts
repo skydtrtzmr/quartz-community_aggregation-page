@@ -22,6 +22,7 @@ describe("folder listings across SPA navigation", () => {
     const section = {
       dataset: { folder: "grouped", items: "[]", listingSort: "{}" },
       querySelector: () => target,
+      closest: () => null,
     }
     const doc = Object.assign(new EventTarget(), {
       body: { dataset: { slug: "grouped/index" } },

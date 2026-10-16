@@ -19,8 +19,8 @@ import {
   type AggregationItem,
   type NormalizedAggregation,
 } from "./rules"
-import { UNCLASSIFIED_VALUE, firstValue } from "./groups"
-import { assignSlugs, dimensionIndexSlug } from "./slug"
+import { buildValueIndex, planDimensions, type DimensionPlan, type DimensionValueIndex } from "./groups"
+import { isFolderIndexSlug } from "./entities"
 
 export interface FolderNavValue {
   value: string
@@ -52,6 +52,8 @@ export interface FolderNavPlan {
 export interface FolderNavOptions {
   /** 单字段最多展示的取值数（防目录页被长尾值撑爆），默认 12 */
   maxValuesPerField?: number
+  /** Shared build snapshot; avoids rescanning the global dimension domain for every folder. */
+  dimensions?: { plan: DimensionPlan; values: DimensionValueIndex }
 }
 
 export const DEFAULT_NAV_MAX_VALUES = 12
@@ -59,14 +61,6 @@ export const DEFAULT_NAV_MAX_VALUES = 12
 /** 码点比较：与 groups.ts 同款，保证「同一份输入 → 同一套顺序」 */
 function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0
-}
-
-/** 文件夹索引页（目录自身）判定：`项目/`、`项目/index`、根 `index` 等 —— 不是目录内的实体 */
-function isFolderIndexSlug(slug: string): boolean {
-  const s = slug || ""
-  if (s === "" || s === "/" || s === "index") return true
-  if (s.endsWith("/")) return true
-  return s.endsWith("/index")
 }
 
 /** 只取当前目录子树内的源实体（目录索引页代表文件夹自身，不算目录内的实体） */
@@ -100,30 +94,35 @@ export function planFolderNav(
   if (scoped.length === 0) return { ...empty, context }
 
   const counts = new Map<string, Map<string, number>>()
-  for (const item of scoped) {
-    for (const field of chain) {
-      const value = firstValue(item.frontmatter?.[field]) ?? UNCLASSIFIED_VALUE
-      const byValue = counts.get(field) ?? new Map<string, number>()
-      byValue.set(value, (byValue.get(value) ?? 0) + 1)
-      counts.set(field, byValue)
+  const scopedSlugs = new Set(scoped.map(item => item.slug))
+  // Respect each descendant's own rule context, as the generated dimension pages do.
+  for (const [field, byValue] of opts.dimensions?.values ?? buildValueIndex(items, config)) {
+    const scopedCounts = new Map<string, number>()
+    for (const [value, matches] of byValue) {
+      const count = matches.filter(match => scopedSlugs.has(match.slug)).length
+      if (count > 0) scopedCounts.set(value, count)
     }
+    counts.set(field, scopedCounts)
   }
 
-  const fieldSlugs = assignSlugs([...counts.keys()], "field")
+  // Collision resolution must use the same global value domain as generated pages.
+  const globalFields = new Map((opts.dimensions?.plan ?? planDimensions(items, config)).fields.map(field => [field.field, field]))
   const fields: FolderNavField[] = []
   // 顺序沿用规则链顺序（规则链即优先轴），与图谱里聚合节点的出现顺序一致
   for (const field of chain) {
     const byValue = counts.get(field)
     if (!byValue || byValue.size === 0) continue
-    const fieldSlug = fieldSlugs.get(field)!
-    const valueSlugs = assignSlugs([...byValue.keys()], "value", ["index"])
+    const globalField = globalFields.get(field)
+    if (!globalField) continue
+    const fieldSlug = globalField.fieldSlug
+    const valueSlugs = new Map(globalField.values.map(value => [value.value, value.valueSlug]))
     const all: FolderNavValue[] = [...byValue.entries()]
       .map(([value, count]) => ({ value, valueSlug: valueSlugs.get(value)!, count }))
       .sort((a, b) => unclassifiedLast(a.value, b.value) || b.count - a.count || compareStrings(a.value, b.value))
     fields.push({
       field,
       fieldSlug,
-      indexSlug: dimensionIndexSlug(fieldSlug),
+      indexSlug: globalField.indexSlug,
       count: [...byValue.values()].reduce((sum, n) => sum + n, 0),
       values: all.slice(0, maxValues),
       hiddenValues: Math.max(0, all.length - maxValues),

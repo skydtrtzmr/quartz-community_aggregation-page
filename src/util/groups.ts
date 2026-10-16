@@ -20,6 +20,7 @@ import {
   type NormalizedAggregation,
 } from "./rules"
 import { assignSlugs, dimensionIndexSlug } from "./slug"
+import { isDimensionEntity } from "./entities"
 
 /** 某个取值在某个目录上下文里的实体数（值页的 scope 切换条用） */
 export interface DimensionScopeCount {
@@ -83,19 +84,15 @@ export interface DimensionMatch {
 /** 字段 → 取值 → 命中实体（emitter 用） */
 export type DimensionValueIndex = Map<string, Map<string, DimensionMatch[]>>
 
-/** 生成页/系统页前缀，属于「非源内容」，不参与维度统计 */
-const GENERATED_PREFIXES = ["_dimensions/", "tags/"]
-
 /** 从 `content` 里取出源内容项（排除维度页自身与虚拟页） */
 export function sourceItems(content: ProcessedContent[]): AggregationItem[] {
   const items: AggregationItem[] = []
   for (const [, file] of content) {
-    const data = file.data as { slug?: string; frontmatter?: Record<string, unknown> } | undefined
+    const data = file.data as { slug?: string; virtualNode?: boolean; frontmatter?: Record<string, unknown> } | undefined
     const slug = data?.slug
     if (!slug) continue
-    if (GENERATED_PREFIXES.some((prefix) => slug.startsWith(prefix))) continue
     const frontmatter = data?.frontmatter
-    if (frontmatter?.virtualNode === true) continue
+    if (!isDimensionEntity({ slug, virtualNode: data?.virtualNode, frontmatter })) continue
     items.push({ slug, frontmatter })
   }
   return items
@@ -171,6 +168,7 @@ function forEachFieldValue(
   visit: (field: string, value: string, item: AggregationItem, scope: string) => void,
 ) {
   for (const item of items) {
+    if (!isDimensionEntity(item)) continue
     const scope = index.contextOf(item.slug)
     for (const field of index.fieldsByContext.get(scope) ?? []) {
       // 缺值不是「跳过」而是归入「未分类」取值 —— 这样它才有维度值页、manifest 条目与子图 matched
